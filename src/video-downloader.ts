@@ -6,9 +6,20 @@ import * as fs from 'fs';
 import { Buffer } from 'buffer';
 import {AIToolboxSettings} from './settings';
 
+/**
+ * Video metadata extracted from the source video
+ */
+export interface VideoMetadata {
+    title?: string;
+    uploader?: string;
+    description?: string;
+    tags?: string[];
+}
+
 export interface ExtractAudioResult {
     audioFilePath: string;
     sourceUrl: string;
+    metadata?: VideoMetadata;
 }
 
 /**
@@ -58,14 +69,20 @@ export async function extractAudioFromClipboard(settings: AIToolboxSettings): Pr
         // For other platforms: falls back to title
         const outputTemplate = path.join(outputDir, '%(uploader,title)s_%(id)s.%(ext)s');
 
-        // Run yt-dlp to extract audio for transcription
-        const audioFilePath = await runYtDlp(url, outputTemplate, settings);
+        // Run yt-dlp to extract audio for transcription and get metadata
+        const ytdlpResult = await runYtDlp(url, outputTemplate, settings);
 
-        new Notice(`Audio extracted successfully!\nReady for transcription.\nSaved to: ${path.dirname(audioFilePath)}`);
+        new Notice(`Audio extracted successfully!\nReady for transcription.\nSaved to: ${path.dirname(ytdlpResult.audioFilePath)}`);
 
         return {
-            audioFilePath,
-            sourceUrl: url
+            audioFilePath: ytdlpResult.audioFilePath,
+            sourceUrl: url,
+            metadata: {
+                title: ytdlpResult.title,
+                uploader: ytdlpResult.uploader,
+                description: ytdlpResult.description,
+                tags: ytdlpResult.tags,
+            },
         };
 
     } catch (error) {
@@ -77,16 +94,62 @@ export async function extractAudioFromClipboard(settings: AIToolboxSettings): Pr
 }
 
 /**
+ * Result from running yt-dlp including audio file path and video metadata
+ */
+interface YtDlpResult {
+    audioFilePath: string;
+    title?: string;
+    uploader?: string;
+    description?: string;
+    tags?: string[];
+}
+
+/**
+ * Structure of the yt-dlp info.json file (partial - only fields we use)
+ */
+interface YtDlpInfoJson {
+    title?: string;
+    uploader?: string;
+    description?: string;
+    tags?: string[];
+    [key: string]: unknown;
+}
+
+/**
  * Runs yt-dlp to extract audio from a video for transcription.
  * Requires yt-dlp and ffmpeg to be installed and available in PATH.
- * Returns the actual filepath reported by yt-dlp.
+ * Returns the actual filepath and video metadata reported by yt-dlp.
  */
-function runYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettings): Promise<string> {
+async function runYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettings): Promise<YtDlpResult> {
+    const audioFilePath = await spawnYtDlp(url, outputTemplate, settings);
+
+    // Read metadata from the .info.json file
+    let metadata: YtDlpInfoJson | null = null;
+    try {
+        metadata = await readAndCleanupInfoJson(audioFilePath);
+    } catch (error) {
+        console.warn('Failed to read metadata, continuing without it:', error);
+    }
+
+    return {
+        audioFilePath,
+        title: metadata?.title,
+        uploader: metadata?.uploader,
+        description: metadata?.description,
+        tags: metadata?.tags,
+    };
+}
+
+/**
+ * Spawns yt-dlp process and returns the audio file path.
+ */
+function spawnYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettings): Promise<string> {
     return new Promise((resolve, reject) => {
         const args = [
             '-x',                    // Extract audio
             '--audio-format', 'mp3', // Convert to mp3
             '--audio-quality', '0',  // Best quality
+            '--write-info-json',     // Write metadata to .info.json file
         ];
 
         // Keep video file if setting is enabled
@@ -118,7 +181,6 @@ function runYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettin
         let stdout = '';
         let stderr = '';
 
-        // Capture stdout where yt-dlp prints the filepath
         proc.stdout.on('data', (data: Buffer) => {
             stdout += data.toString();
         });
@@ -129,13 +191,11 @@ function runYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettin
 
         proc.on('close', (code) => {
             if (code === 0) {
-                // The filepath is printed to stdout by --print flag
-                // It should be the last line of output
                 const lines = stdout.trim().split('\n');
-                const filepath = lines[lines.length - 1]?.trim();
+                const audioFilePath = lines[lines.length - 1]?.trim();
 
-                if (filepath && fs.existsSync(filepath)) {
-                    resolve(filepath);
+                if (audioFilePath && fs.existsSync(audioFilePath)) {
+                    resolve(audioFilePath);
                 } else {
                     reject(new Error(`yt-dlp did not return a valid filepath. Output: ${stdout}`));
                 }
@@ -148,6 +208,41 @@ function runYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettin
             reject(new Error(`Failed to start yt-dlp: ${err.message}. Is yt-dlp installed?`));
         });
     });
+}
+
+/**
+ * Reads metadata from the .info.json file created by yt-dlp and cleans it up.
+ * The info.json file is created alongside the audio file with the same base name.
+ */
+async function readAndCleanupInfoJson(audioFilePath: string): Promise<YtDlpInfoJson | null> {
+    try {
+        // The info.json file has the same base name but with .info.json extension
+        // e.g., "video_123.mp3" -> "video_123.info.json"
+        const dir = path.dirname(audioFilePath);
+        const basename = path.basename(audioFilePath, path.extname(audioFilePath));
+        const infoJsonPath = path.join(dir, `${basename}.info.json`);
+
+        if (fs.existsSync(infoJsonPath)) {
+            const content = await fs.promises.readFile(infoJsonPath, 'utf-8');
+            const metadata = JSON.parse(content) as YtDlpInfoJson;
+
+            // Clean up the info.json file after reading
+            await fs.promises.unlink(infoJsonPath);
+
+            return {
+                title: metadata.title || undefined,
+                uploader: metadata.uploader || undefined,
+                description: metadata.description || undefined,
+                tags: Array.isArray(metadata.tags) && metadata.tags.length > 0
+                    ? metadata.tags
+                    : undefined,
+            };
+        }
+    } catch (error) {
+        console.warn('Failed to read or parse info.json:', error);
+    }
+
+    return null;
 }
 
 /**
