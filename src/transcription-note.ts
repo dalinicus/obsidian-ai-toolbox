@@ -46,30 +46,47 @@ async function extractVideoIdFromUrl(url: string): Promise<string | null> {
 
 /**
  * Creates a new Obsidian note with the transcription content.
- * 
+ *
  * @param app - Obsidian App instance
  * @param result - Transcription result from Whisper
  * @param sourceUrl - Optional source URL of the video
  * @param includeTimestamps - Whether to include timestamps in the note
+ * @param notesFolder - Optional folder path where the note should be created
  * @returns The created TFile
  */
 export async function createTranscriptionNote(
 	app: App,
 	result: TranscriptionResult,
 	sourceUrl?: string,
-	includeTimestamps = false
+	includeTimestamps = false,
+	notesFolder = ''
 ): Promise<TFile> {
 	try {
 		// Generate note filename from audio file path
 		const noteFilename = generateNoteFilename(result.audioFilePath);
 
+		// Build full path with optional folder
+		let notePath = noteFilename;
+		if (notesFolder) {
+			// Normalize the folder path (remove leading/trailing slashes)
+			const normalizedFolder = notesFolder.replace(/^\/+|\/+$/g, '');
+
+			// Ensure the folder exists
+			const folderExists = app.vault.getAbstractFileByPath(normalizedFolder);
+			if (!folderExists) {
+				await app.vault.createFolder(normalizedFolder);
+			}
+
+			notePath = `${normalizedFolder}/${noteFilename}`;
+		}
+
 		// Format the note content
 		const noteContent = await formatNoteContent(result, sourceUrl, includeTimestamps);
 
-		// Create the note in the vault root
-		const file = await app.vault.create(noteFilename, noteContent);
+		// Create the note
+		const file = await app.vault.create(notePath, noteContent);
 
-		new Notice(`Transcription note created: ${noteFilename}`);
+		new Notice(`Transcription note created: ${notePath}`);
 
 		return file;
 	} catch (error) {

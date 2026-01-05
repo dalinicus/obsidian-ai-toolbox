@@ -1,7 +1,7 @@
 {
 	"id": "ai-toolbox",
 	"name": "AI Toolbox",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "0.15.0",
 	"description": "Personal collection of AI tools to enhance the Obsidian.md workflow.",
 	"author": "dalinicus",

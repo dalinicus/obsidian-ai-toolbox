@@ -12,6 +12,7 @@ export interface AIToolboxSettings {
 	azureDeploymentName: string;
 	includeTimestamps: boolean;
 	transcriptionLanguage: string;
+	outputFolder: string;
 }
 
 export const DEFAULT_SETTINGS: AIToolboxSettings = {
@@ -24,7 +25,8 @@ export const DEFAULT_SETTINGS: AIToolboxSettings = {
 	azureApiKey: '',
 	azureDeploymentName: '',
 	includeTimestamps: true,
-	transcriptionLanguage: ''
+	transcriptionLanguage: '',
+	outputFolder: ''
 }
 
 export class AIToolboxSettingTab extends PluginSettingTab {
@@ -153,6 +155,16 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.includeTimestamps)
 				.onChange(async (value) => {
 					this.plugin.settings.includeTimestamps = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
+			.setName('Notes folder')
+			.setDesc('Folder where transcription notes will be created (leave empty for vault root)')
+			.addText(text => text
+				.setValue(this.plugin.settings.outputFolder)
+				.onChange(async (value) => {
+					this.plugin.settings.outputFolder = value;
 					await this.plugin.saveSettings();
 				}));
 

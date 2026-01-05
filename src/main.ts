@@ -53,7 +53,8 @@ export default class AIToolboxPlugin extends Plugin {
 				this.app,
 				transcriptionResult,
 				sourceUrl,
-				this.settings.includeTimestamps
+				this.settings.includeTimestamps,
+				this.settings.outputFolder
 			);
 
 			// Step 4: Open the note
