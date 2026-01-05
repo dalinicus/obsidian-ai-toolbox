@@ -47,22 +47,6 @@ pip install yt-dlp[curl_cffi]
    - Wait for the plugin to download, extract audio, and transcribe
    - A new note will be created and opened with the transcription
 
-## Configuration
-
-### Required Settings
-
-- **Azure Endpoint**: Your Azure OpenAI endpoint URL
-- **Azure API Key**: Your Azure OpenAI API key
-- **Azure Deployment Name**: The name of your Whisper deployment
-
-### Optional Settings
-
-- **Include Timestamps**: Add timestamps to transcription segments (default: false)
-- **Transcription Language**: Specify language code (e.g., 'en', 'es') or leave blank for auto-detect
-- **Output Folder**: Folder path for transcription notes (default: root of vault)
-- **yt-dlp Path**: Custom path to yt-dlp executable (if not in system PATH)
-- **ffmpeg Path**: Custom path to ffmpeg executable (if not in system PATH)
-
 ## Installation
 
 ### Using BRAT
