@@ -49,6 +49,8 @@ If your plugin does not need CSS, delete this file.
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	cursor: pointer;
+	user-select: none;
 }
 
 .settings-advanced-heading:hover {
@@ -57,4 +59,12 @@ If your plugin does not need CSS, delete this file.
 
 .settings-advanced-container {
 	margin-left: 10px;
+}
+
+.settings-advanced-container.is-collapsed {
+	display: none;
+}
+
+.settings-advanced-container.is-expanded {
+	display: block;
 }

@@ -1,7 +1,7 @@
 import {App, PluginSettingTab, Setting} from "obsidian";
-import MyPlugin from "./main";
+import AIToolboxPlugin from "./main";
 
-export interface MyPluginSettings {
+export interface AIToolboxSettings {
 	impersonateBrowser: string;
 	ytdlpLocation: string;
 	ffmpegLocation: string;
@@ -14,7 +14,7 @@ export interface MyPluginSettings {
 	transcriptionLanguage: string;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
+export const DEFAULT_SETTINGS: AIToolboxSettings = {
 	impersonateBrowser: 'chrome',
 	ytdlpLocation: '',
 	ffmpegLocation: '',
@@ -27,11 +27,11 @@ export const DEFAULT_SETTINGS: MyPluginSettings = {
 	transcriptionLanguage: ''
 }
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class AIToolboxSettingTab extends PluginSettingTab {
+	plugin: AIToolboxPlugin;
 	private activeTab: 'transcription' | 'ai' = 'ai';
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: AIToolboxPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -46,7 +46,7 @@ export class SampleSettingTab extends PluginSettingTab {
 		const tabContent = tabContainer.createDiv('settings-tab-content');
 
 		const aiTabButton = tabHeader.createEl('button', {
-			text: 'AI Settings',
+			text: 'AI settings',
 			cls: 'settings-tab-button'
 		});
 
@@ -66,7 +66,8 @@ export class SampleSettingTab extends PluginSettingTab {
 			} else if (tab === 'transcription') {
 				this.displayTranscriptionSettings(tabContent);
 			} else {
-				console.error(`Unknown settings tab: ${tab}`);
+				const _exhaustiveCheck: never = tab;
+				console.error(`Unknown settings tab: ${String(_exhaustiveCheck)}`);
 			}
 		};
 
@@ -77,10 +78,12 @@ export class SampleSettingTab extends PluginSettingTab {
 	}
 
 	private displayAISettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', {text: 'Azure OpenAI Settings'});
+		new Setting(containerEl)
+			.setName('Azure OpenAI') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
+			.setHeading();
 
 		new Setting(containerEl)
-			.setName('Azure OpenAI endpoint')
+			.setName('Endpoint')
 			.setDesc('Your Azure OpenAI resource endpoint (e.g., https://your-resource.openai.azure.com)')
 			.addText(text => text
 				.setPlaceholder('https://your-resource.openai.azure.com')
@@ -91,8 +94,8 @@ export class SampleSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Azure OpenAI API key')
-			.setDesc('Your Azure OpenAI API key')
+			.setName('API key')
+			.setDesc('Your Azure OpenAI API key') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
 			.addText(text => {
 				text.inputEl.type = 'password';
 				text.setPlaceholder('Enter your API key')
@@ -105,7 +108,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Whisper deployment name')
-			.setDesc('The name of your Whisper model deployment in Azure OpenAI')
+			.setDesc('The name of your Whisper model deployment in Azure OpenAI') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
 			.addText(text => text
 				.setPlaceholder('Enter your deployment name')
 				.setValue(this.plugin.settings.azureDeploymentName)
@@ -117,7 +120,7 @@ export class SampleSettingTab extends PluginSettingTab {
 
 	private displayTranscriptionSettings(containerEl: HTMLElement): void {
 		new Setting(containerEl)
-			.setName('Impersonate browser')
+			.setName('Browser to impersonate')
 			.setDesc('Browser to impersonate when extracting audio for transcription')
 			.addDropdown(dropdown => dropdown
 				.addOption('chrome', 'Chrome')
@@ -133,10 +136,10 @@ export class SampleSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Transcription language')
+			.setName('Language')
 			.setDesc('Language code for transcription (e.g., en, es, fr). Leave empty for automatic detection')
 			.addText(text => text
-				.setPlaceholder('auto-detect')
+				.setPlaceholder('')
 				.setValue(this.plugin.settings.transcriptionLanguage)
 				.onChange(async (value) => {
 					this.plugin.settings.transcriptionLanguage = value;
@@ -167,9 +170,9 @@ export class SampleSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.keepVideo) {
 			new Setting(containerEl)
 				.setName('Output directory')
-				.setDesc('Directory where video files will be saved (leave empty to use ~/Videos/Obsidian)')
+				.setDesc('Directory where video files will be saved (leave empty to use ~/Videos/Obsidian)') // eslint-disable-line obsidianmd/ui/sentence-case -- path example
 				.addText(text => text
-					.setPlaceholder('~/Videos/Obsidian')
+					.setPlaceholder('~/Videos/Obsidian') // eslint-disable-line obsidianmd/ui/sentence-case -- path example
 					.setValue(this.plugin.settings.outputDirectory)
 					.onChange(async (value) => {
 						this.plugin.settings.outputDirectory = value;
@@ -177,28 +180,29 @@ export class SampleSettingTab extends PluginSettingTab {
 					}));
 		}
 
-		const advancedHeading = containerEl.createEl('h3', {
-			text: 'Advanced Settings',
-			cls: 'settings-advanced-heading'
-		});
-		advancedHeading.style.cursor = 'pointer';
-		advancedHeading.style.userSelect = 'none';
+		const advancedContainer = containerEl.createDiv('settings-advanced-container is-collapsed');
 
-		const advancedContainer = containerEl.createDiv('settings-advanced-container');
-		advancedContainer.style.display = 'none';
+		const advancedSetting = new Setting(containerEl)
+			.setName('▸ Advanced') // eslint-disable-line obsidianmd/ui/sentence-case
+			.setHeading();
+
+		advancedSetting.settingEl.addClass('settings-advanced-heading');
 
 		const toggleAdvanced = () => {
-			const isHidden = advancedContainer.style.display === 'none';
-			advancedContainer.style.display = isHidden ? 'block' : 'none';
-			advancedHeading.textContent = `${isHidden ? '▾' : '▸'} Advanced Settings`;
+			const isCollapsed = advancedContainer.classList.contains('is-collapsed');
+			advancedContainer.classList.toggle('is-collapsed', !isCollapsed);
+			advancedContainer.classList.toggle('is-expanded', isCollapsed);
+			advancedSetting.setName(`${isCollapsed ? '▾' : '▸'} Advanced`);
 		};
 
-		advancedHeading.addEventListener('click', toggleAdvanced);
-		advancedHeading.textContent = '▸ Advanced Settings';
+		advancedSetting.settingEl.addEventListener('click', toggleAdvanced);
+
+		// Move the advancedContainer after the heading
+		containerEl.appendChild(advancedContainer);
 
 		new Setting(advancedContainer)
-			.setName('yt-dlp location')
-			.setDesc('Path to yt-dlp binary directory (leave empty to use system PATH)')
+			.setName('yt-dlp path') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
+			.setDesc('Path to yt-dlp binary directory (leave empty to use system PATH)') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
 			.addText(text => text
 				.setValue(this.plugin.settings.ytdlpLocation)
 				.onChange(async (value) => {
@@ -207,8 +211,8 @@ export class SampleSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(advancedContainer)
-			.setName('FFmpeg location')
-			.setDesc('Path to FFmpeg binary directory (leave empty to use system PATH)')
+			.setName('FFmpeg path') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
+			.setDesc('Path to FFmpeg binary directory (leave empty to use system PATH)') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
 			.addText(text => text
 				.setValue(this.plugin.settings.ffmpegLocation)
 				.onChange(async (value) => {

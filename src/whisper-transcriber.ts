@@ -1,5 +1,6 @@
 import { Notice, requestUrl } from 'obsidian';
 import * as fs from 'fs';
+import { Buffer } from 'buffer';
 
 /**
  * Interface for transcription results with text and optional timestamps
@@ -25,6 +26,14 @@ export interface AzureWhisperConfig {
 	endpoint: string;
 	apiKey: string;
 	deploymentName: string;
+}
+
+/**
+ * Interface for Azure OpenAI Whisper API response
+ */
+interface WhisperApiResponse {
+	text: string;
+	segments?: Array<{ text: string; start: number; end: number }>;
 }
 
 /**
@@ -162,7 +171,8 @@ export async function transcribe(
 	}
 
 	try {
-		new Notice('Transcribing audio with Azure OpenAI Whisper...');
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- proper nouns
+		new Notice('Transcribing audio with Azure OpenAI Whisper');
 
 		// Read the audio file
 		const audioBuffer = fs.readFileSync(audioFilePath);
@@ -196,7 +206,7 @@ export async function transcribe(
 			throw new Error(`Azure OpenAI API error: ${response.status} - ${response.text}`);
 		}
 
-		const result = response.json;
+		const result = response.json as WhisperApiResponse;
 		new Notice('Transcription complete!');
 
 		// Parse and format the response
