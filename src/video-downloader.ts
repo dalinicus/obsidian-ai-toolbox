@@ -3,7 +3,8 @@ import {spawn} from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-import {MyPluginSettings} from './settings';
+import { Buffer } from 'buffer';
+import {AIToolboxSettings} from './settings';
 
 export interface ExtractAudioResult {
     audioFilePath: string;
@@ -16,7 +17,7 @@ export interface ExtractAudioResult {
  * Uses yt-dlp directly via child_process for audio extraction.
  * Requires yt-dlp and ffmpeg to be installed and available in PATH.
  */
-export async function extractAudioFromClipboard(settings: MyPluginSettings): Promise<ExtractAudioResult | null> {
+export async function extractAudioFromClipboard(settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
     try {
         // Read URL from clipboard
         const clipboardText = await navigator.clipboard.readText();
@@ -39,7 +40,7 @@ export async function extractAudioFromClipboard(settings: MyPluginSettings): Pro
 
         if (settings.keepVideo) {
             // Use custom directory or default Downloads folder when keeping video
-            const homeDir = process.env.USERPROFILE || process.env.HOME || os.homedir();
+            const homeDir = os.homedir();
             outputDir = settings.outputDirectory ||
                 path.join(homeDir, 'Videos', 'Obsidian');
 
@@ -80,7 +81,7 @@ export async function extractAudioFromClipboard(settings: MyPluginSettings): Pro
  * Requires yt-dlp and ffmpeg to be installed and available in PATH.
  * Returns the actual filepath reported by yt-dlp.
  */
-function runYtDlp(url: string, outputTemplate: string, settings: MyPluginSettings): Promise<string> {
+function runYtDlp(url: string, outputTemplate: string, settings: AIToolboxSettings): Promise<string> {
     return new Promise((resolve, reject) => {
         const args = [
             '-x',                    // Extract audio
@@ -118,11 +119,11 @@ function runYtDlp(url: string, outputTemplate: string, settings: MyPluginSetting
         let stderr = '';
 
         // Capture stdout where yt-dlp prints the filepath
-        proc.stdout.on('data', (data) => {
+        proc.stdout.on('data', (data: Buffer) => {
             stdout += data.toString();
         });
 
-        proc.stderr.on('data', (data) => {
+        proc.stderr.on('data', (data: Buffer) => {
             stderr += data.toString();
         });
 

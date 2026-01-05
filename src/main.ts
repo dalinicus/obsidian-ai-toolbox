@@ -1,22 +1,22 @@
 import {Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import {DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab} from "./settings";
 import {extractAudioFromClipboard} from "./video-downloader";
 import {transcribe} from "./whisper-transcriber";
 import {createTranscriptionNote, openTranscriptionNote} from "./transcription-note";
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class AIToolboxPlugin extends Plugin {
+	settings: AIToolboxSettings;
 
 	async onload() {
 		await this.loadSettings();
 
 		// This creates an icon in the left ribbon for video transcription.
 		this.addRibbonIcon('captions', 'Transcribe video from clipboard', () => {
-			this.transcribeFromClipboard();
+			void this.transcribeFromClipboard();
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new AIToolboxSettingTab(this.app, this));
 	}
 
 	/**
@@ -69,7 +69,7 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<AIToolboxSettings>);
 	}
 
 	async saveSettings() {

@@ -1,6 +1,14 @@
 import { App, Notice, TFile, requestUrl } from 'obsidian';
-import { TranscriptionResult, TranscriptionChunk } from './whisper-transcriber';
+import { TranscriptionResult } from './whisper-transcriber';
 import * as path from 'path';
+
+/**
+ * Interface for TikTok oEmbed API response
+ */
+interface TikTokOEmbedResponse {
+	html?: string;
+	[key: string]: unknown;
+}
 
 /**
  * Extracts the video ID from a TikTok URL using the oEmbed API.
@@ -20,10 +28,13 @@ async function extractVideoIdFromUrl(url: string): Promise<string | null> {
 			}
 		});
 
-		if (response.status === 200 && response.json?.html) {
-			const videoIdMatch = response.json.html.match(/data-video-id="(\d+)"/);
-			if (videoIdMatch?.[1]) {
-				return videoIdMatch[1];
+		if (response.status === 200) {
+			const data = response.json as TikTokOEmbedResponse;
+			if (data.html) {
+				const videoIdMatch = data.html.match(/data-video-id="(\d+)"/);
+				if (videoIdMatch?.[1]) {
+					return videoIdMatch[1];
+				}
 			}
 		}
 	} catch (error) {
