@@ -1,49 +1,6 @@
-import { App, Notice, TFile, requestUrl } from 'obsidian';
+import { App, Notice, TFile } from 'obsidian';
 import { TranscriptionResult } from './whisper-transcriber';
-import { VideoMetadata } from './video-downloader';
-import * as path from 'path';
-
-/**
- * Interface for TikTok oEmbed API response
- */
-interface TikTokOEmbedResponse {
-	html?: string;
-	[key: string]: unknown;
-}
-
-/**
- * Extracts the video ID from a TikTok URL using the oEmbed API.
- * This handles all TikTok URL formats (short URLs, /t/ URLs, etc.)
- *
- * @param url - TikTok URL (any format)
- * @returns Video ID or null if extraction fails
- */
-async function extractVideoIdFromUrl(url: string): Promise<string | null> {
-	try {
-		const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
-		const response = await requestUrl({
-			url: oembedUrl,
-			method: 'GET',
-			headers: {
-				'User-Agent': 'Mozilla/5.0 (compatible; Obsidian-AI-Toolbox/1.0)'
-			}
-		});
-
-		if (response.status === 200) {
-			const data = response.json as TikTokOEmbedResponse;
-			if (data.html) {
-				const videoIdMatch = data.html.match(/data-video-id="(\d+)"/);
-				if (videoIdMatch?.[1]) {
-					return videoIdMatch[1];
-				}
-			}
-		}
-	} catch (error) {
-		console.error('Failed to extract video ID from TikTok URL:', error);
-	}
-
-	return null;
-}
+import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
 
 /**
  * Creates a new Obsidian note with the transcription content.
@@ -111,50 +68,7 @@ export async function openTranscriptionNote(app: App, file: TFile): Promise<void
 	await leaf.openFile(file);
 }
 
-/**
- * Checks if a URL is a TikTok URL.
- */
-function isTikTokUrl(url: string): boolean {
-	const tiktokPatterns = [
-		/^https?:\/\/(www\.)?tiktok\.com\//i,
-		/^https?:\/\/(vm|vt)\.tiktok\.com\//i,
-	];
-	return tiktokPatterns.some(pattern => pattern.test(url));
-}
 
-/**
- * Checks if a URL is a YouTube URL.
- */
-function isYouTubeUrl(url: string): boolean {
-	const youtubePatterns = [
-		/^https?:\/\/(www\.)?youtube\.com\//i,
-		/^https?:\/\/youtu\.be\//i,
-	];
-	return youtubePatterns.some(pattern => pattern.test(url));
-}
-
-/**
- * Extracts the YouTube video ID from a URL.
- */
-function extractYouTubeVideoId(url: string): string | null {
-	// Handle youtu.be/VIDEO_ID
-	const shortMatch = url.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
-	if (shortMatch?.[1]) return shortMatch[1];
-
-	// Handle youtube.com/watch?v=VIDEO_ID
-	const watchMatch = url.match(/[?&]v=([a-zA-Z0-9_-]+)/);
-	if (watchMatch?.[1]) return watchMatch[1];
-
-	// Handle youtube.com/shorts/VIDEO_ID
-	const shortsMatch = url.match(/\/shorts\/([a-zA-Z0-9_-]+)/);
-	if (shortsMatch?.[1]) return shortsMatch[1];
-
-	// Handle youtube.com/embed/VIDEO_ID
-	const embedMatch = url.match(/\/embed\/([a-zA-Z0-9_-]+)/);
-	if (embedMatch?.[1]) return embedMatch[1];
-
-	return null;
-}
 
 /**
  * Generates a filename for the transcription note based on video metadata.
@@ -172,12 +86,13 @@ export function generateNoteFilename(
 	// Add timestamp to ensure uniqueness
 	const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
 
-	// Determine title - use "TikTok" for TikTok URLs, otherwise use metadata or fallback
+	// Determine title using platform handler or metadata
 	let title: string;
-	if (sourceUrl && isTikTokUrl(sourceUrl)) {
-		title = 'TikTok';
-	} else if (videoMetadata?.title) {
+	const handler = sourceUrl ? videoPlatformRegistry.findHandlerForUrl(sourceUrl) : undefined;
+	if (videoMetadata?.title) {
 		title = videoMetadata.title;
+	} else if (handler) {
+		title = handler.getDefaultTitle();
 	} else {
 		title = 'Video';
 	}
@@ -210,21 +125,19 @@ export async function formatNoteContent(
 
 	// Add source URL if available
 	if (sourceUrl) {
-		lines.push('# Video Source');	
-		lines.push('');	
-	
-		if (isTikTokUrl(sourceUrl)) {
-			const videoId = await extractVideoIdFromUrl(sourceUrl);
+		lines.push('# Video Source');
+		lines.push('');
+
+		const handler = videoPlatformRegistry.findHandlerForUrl(sourceUrl);
+		if (handler) {
+			const videoId = await handler.extractVideoId(sourceUrl);
 			if (videoId) {
-				lines.push(`<iframe width="325" height="760" src="https://www.tiktok.com/embed/v2/${videoId}?autoplay=0"></iframe>`);
+				const embed = handler.generateEmbed(videoId, sourceUrl);
+				lines.push(embed.iframeHtml);
+				lines.push(embed.markdownLink);
+			} else {
+				lines.push(`[Watch on ${handler.platformName}](${sourceUrl})`);
 			}
-			lines.push(`[Watch on TikTok](${sourceUrl})`);
-		} else if (isYouTubeUrl(sourceUrl)) {
-			const videoId = extractYouTubeVideoId(sourceUrl);
-			if (videoId) {
-				lines.push(`<iframe width="560" height="315" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`);
-			}
-			lines.push(`[Watch on YouTube](${sourceUrl})`);
 		}
 		lines.push('');
 	}

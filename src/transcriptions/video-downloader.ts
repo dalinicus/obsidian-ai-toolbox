@@ -4,17 +4,11 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { Buffer } from 'buffer';
-import {AIToolboxSettings} from './settings';
+import {AIToolboxSettings} from '../settings';
+import { videoPlatformRegistry, VideoMetadata } from './video-platforms';
 
-/**
- * Video metadata extracted from the source video
- */
-export interface VideoMetadata {
-    title?: string;
-    uploader?: string;
-    description?: string;
-    tags?: string[];
-}
+// Re-export VideoMetadata for backwards compatibility
+export type { VideoMetadata } from './video-platforms';
 
 export interface ExtractAudioResult {
     audioFilePath: string;
@@ -39,13 +33,19 @@ export async function extractAudioFromClipboard(settings: AIToolboxSettings): Pr
         }
 
         // Validate video URL
-        if (!isValidVideoUrl(clipboardText)) {
+        if (!videoPlatformRegistry.isValidVideoUrl(clipboardText)) {
             new Notice('Clipboard does not contain a valid video URL');
             return null;
         }
 
         const url = clipboardText.trim();
         new Notice('Preparing video for transcription...');
+
+        // Get platform-specific handler for output template
+        const handler = videoPlatformRegistry.findHandlerForUrl(url);
+        const filenameTemplate = handler
+            ? handler.getYtDlpArgs().outputConfig.filenameTemplate
+            : '%(title)s_%(id)s';
 
         let outputDir: string;
 
@@ -64,10 +64,8 @@ export async function extractAudioFromClipboard(settings: AIToolboxSettings): Pr
             outputDir = os.tmpdir();
         }
 
-        // Generate output template with better naming for TikTok
-        // For TikTok: uses uploader_id format (e.g., "username_1234567890.mp3")
-        // For other platforms: falls back to title
-        const outputTemplate = path.join(outputDir, '%(uploader,title)s_%(id)s.%(ext)s');
+        // Use platform-specific output template
+        const outputTemplate = path.join(outputDir, `${filenameTemplate}.%(ext)s`);
 
         // Run yt-dlp to extract audio for transcription and get metadata
         const ytdlpResult = await runYtDlp(url, outputTemplate, settings);
@@ -245,30 +243,5 @@ async function readAndCleanupInfoJson(audioFilePath: string): Promise<YtDlpInfoJ
     return null;
 }
 
-/**
- * Validates if a URL is a supported video URL (TikTok, YouTube, etc.).
- * yt-dlp supports many platforms, so we check for common video URL patterns.
- */
-function isValidVideoUrl(url: string): boolean {
-    const trimmedUrl = url.trim();
-    
-    // TikTok patterns
-    const tiktokPatterns = [
-        /^https?:\/\/(www\.)?tiktok\.com\/@[\w.-]+\/video\/\d+/i,
-        /^https?:\/\/(vm|vt)\.tiktok\.com\/[\w]+/i,
-        /^https?:\/\/(www\.)?tiktok\.com\/t\/[\w]+/i,
-    ];
 
-    // YouTube patterns
-    const youtubePatterns = [
-        /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[\w-]+/i,
-        /^https?:\/\/(www\.)?youtube\.com\/shorts\/[\w-]+/i,
-        /^https?:\/\/youtu\.be\/[\w-]+/i,
-        /^https?:\/\/(www\.)?youtube\.com\/embed\/[\w-]+/i,
-    ];
-
-    // Check if URL matches any supported pattern
-    const allPatterns = [...tiktokPatterns, ...youtubePatterns];
-    return allPatterns.some(pattern => pattern.test(trimmedUrl));
-}
 
