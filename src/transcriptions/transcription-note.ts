@@ -1,69 +1,29 @@
-import { App, Notice, TFile, requestUrl } from 'obsidian';
-import { TranscriptionResult } from './whisper-transcriber';
-import * as path from 'path';
-
-/**
- * Interface for TikTok oEmbed API response
- */
-interface TikTokOEmbedResponse {
-	html?: string;
-	[key: string]: unknown;
-}
-
-/**
- * Extracts the video ID from a TikTok URL using the oEmbed API.
- * This handles all TikTok URL formats (short URLs, /t/ URLs, etc.)
- *
- * @param url - TikTok URL (any format)
- * @returns Video ID or null if extraction fails
- */
-async function extractVideoIdFromUrl(url: string): Promise<string | null> {
-	try {
-		const oembedUrl = `https://www.tiktok.com/oembed?url=${encodeURIComponent(url)}`;
-		const response = await requestUrl({
-			url: oembedUrl,
-			method: 'GET',
-			headers: {
-				'User-Agent': 'Mozilla/5.0 (compatible; Obsidian-AI-Toolbox/1.0)'
-			}
-		});
-
-		if (response.status === 200) {
-			const data = response.json as TikTokOEmbedResponse;
-			if (data.html) {
-				const videoIdMatch = data.html.match(/data-video-id="(\d+)"/);
-				if (videoIdMatch?.[1]) {
-					return videoIdMatch[1];
-				}
-			}
-		}
-	} catch (error) {
-		console.error('Failed to extract video ID from TikTok URL:', error);
-	}
-
-	return null;
-}
+import { App, Notice, TFile } from 'obsidian';
+import { TranscriptionResult } from '../providers';
+import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
 
 /**
  * Creates a new Obsidian note with the transcription content.
  *
  * @param app - Obsidian App instance
  * @param result - Transcription result from Whisper
- * @param sourceUrl - Optional source URL of the video
+ * @param sourceUrl - Source URL of the video
  * @param includeTimestamps - Whether to include timestamps in the note
  * @param notesFolder - Optional folder path where the note should be created
+ * @param videoMetadata - Optional video metadata (description, tags)
  * @returns The created TFile
  */
 export async function createTranscriptionNote(
 	app: App,
 	result: TranscriptionResult,
-	sourceUrl?: string,
+	sourceUrl: string,
 	includeTimestamps = false,
-	notesFolder = ''
+	notesFolder = '',
+	videoMetadata?: VideoMetadata
 ): Promise<TFile> {
 	try {
-		// Generate note filename from audio file path
-		const noteFilename = generateNoteFilename(result.audioFilePath);
+		// Generate note filename from video metadata
+		const noteFilename = generateNoteFilename(sourceUrl, videoMetadata);
 
 		// Build full path with optional folder
 		let notePath = noteFilename;
@@ -81,7 +41,7 @@ export async function createTranscriptionNote(
 		}
 
 		// Format the note content
-		const noteContent = await formatNoteContent(result, sourceUrl, includeTimestamps);
+		const noteContent = await formatNoteContent(result, sourceUrl, includeTimestamps, videoMetadata);
 
 		// Create the note
 		const file = await app.vault.create(notePath, noteContent);
@@ -108,20 +68,37 @@ export async function openTranscriptionNote(app: App, file: TFile): Promise<void
 	await leaf.openFile(file);
 }
 
+
+
 /**
- * Generates a filename for the transcription note based on the audio file path.
- * 
- * @param audioFilePath - Path to the audio file
+ * Generates a filename for the transcription note based on video metadata.
+ * Format: "{title} by {uploader} - {timestamp}.md"
+ *
+ * @param sourceUrl - Source URL to detect platform
+ * @param videoMetadata - Video metadata containing title and uploader
  * @returns Markdown filename for the note
  */
-export function generateNoteFilename(audioFilePath: string): string {
-	// Extract base filename without extension
-	const basename = path.basename(audioFilePath, path.extname(audioFilePath));
-	
+export function generateNoteFilename(
+	sourceUrl: string,
+	videoMetadata?: VideoMetadata
+): string {
 	// Add timestamp to ensure uniqueness
 	const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-	
-	return `Transcription - ${basename} - ${timestamp}.md`;
+
+	// Determine title using platform handler (each platform decides how to handle metadata)
+	const handler = videoPlatformRegistry.findHandlerForUrl(sourceUrl);
+	if (!handler) {
+		throw new Error(`No handler found for URL: ${sourceUrl}`);
+	}
+	const title = handler.getTitle(videoMetadata);
+
+	// Determine uploader
+	const uploader = videoMetadata?.uploader || 'Unknown';
+
+	// Sanitize filename (remove characters that are invalid in filenames)
+	const sanitize = (str: string): string => str.replace(/[<>:"/\\|?*]/g, '-');
+
+	return `${sanitize(title)} by ${sanitize(uploader)} - ${timestamp}.md`;
 }
 
 /**
@@ -130,34 +107,57 @@ export function generateNoteFilename(audioFilePath: string): string {
  * @param result - Transcription result from Whisper
  * @param sourceUrl - Optional source URL of the video
  * @param includeTimestamps - Whether to include timestamps
+ * @param videoMetadata - Optional video metadata (description, tags)
  * @returns Formatted markdown content
  */
 export async function formatNoteContent(
 	result: TranscriptionResult,
 	sourceUrl?: string,
-	includeTimestamps = false
+	includeTimestamps = false,
+	videoMetadata?: VideoMetadata
 ): Promise<string> {
 	const lines: string[] = [];
 
-	// Add title
-	const basename = path.basename(result.audioFilePath, path.extname(result.audioFilePath));
-	lines.push(`# ${basename}`);
-	lines.push('');
-
 	// Add source URL if available
 	if (sourceUrl) {
-		lines.push('## Source');
-		const videoId = await extractVideoIdFromUrl(sourceUrl);
-		if (videoId) {
-			lines.push(`<iframe width="325" height="760" src="https://www.tiktok.com/embed/v2/${videoId}?autoplay=0"></iframe>`);
+		lines.push('# Video Source');
+		lines.push('');
+
+		const handler = videoPlatformRegistry.findHandlerForUrl(sourceUrl);
+		if (handler) {
+			const videoId = await handler.extractVideoId(sourceUrl);
+			if (videoId) {
+				const embed = handler.generateEmbed(videoId, sourceUrl);
+				lines.push(embed.iframeHtml);
+				lines.push(embed.markdownLink);
+			} else {
+				lines.push(`[Watch on ${handler.platformName}](${sourceUrl})`);
+			}
 		}
+		lines.push('');
+	}
+
+	// Add video metadata section if available
+	if (videoMetadata && videoMetadata.description) {
+		lines.push('# Description');
+		lines.push('');
+		lines.push(videoMetadata.description);
+		lines.push('');
+	}
+
+	if (videoMetadata && videoMetadata.tags && videoMetadata.tags.length > 0) {
+		lines.push('# Tags');
+		lines.push('');
+		// Format tags as a comma-separated list with hashtags
+		const formattedTags = videoMetadata.tags.map(tag => `#${tag.replace(/\s+/g, '-')}`).join(' ');
+		lines.push(formattedTags);
 		lines.push('');
 	}
 	
 	// Add transcription section
-	lines.push('## Transcription');
+	lines.push('# Transcription');
 	lines.push('');
-	
+
 	if (includeTimestamps && result.chunks && result.chunks.length > 0) {
 		// Format with timestamps
 		for (const chunk of result.chunks) {
@@ -170,17 +170,7 @@ export async function formatNoteContent(
 		lines.push(result.text);
 		lines.push('');
 	}
-	
-	// Add metadata section
-	lines.push('---');
-	lines.push('');
-	lines.push('## Metadata');
-	lines.push(`- **Audio File**: \`${result.audioFilePath}\``);
-	lines.push(`- **Transcribed**: ${new Date().toLocaleString()}`);
-	if (sourceUrl) {
-		lines.push(`- **Source**: ${sourceUrl}`);
-	}
-	
+
 	return lines.join('\n');
 }
 

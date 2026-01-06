@@ -1,8 +1,7 @@
-import {Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab} from "./settings";
-import {extractAudioFromClipboard} from "./video-downloader";
-import {transcribe} from "./whisper-transcriber";
-import {createTranscriptionNote, openTranscriptionNote} from "./transcription-note";
+import { Notice, Plugin } from 'obsidian';
+import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings";
+import { createTranscriptionProvider } from "./providers";
+import { transcribeFromClipboard } from "./transcriptions/transcription-workflow";
 
 export default class AIToolboxPlugin extends Plugin {
 	settings: AIToolboxSettings;
@@ -23,50 +22,21 @@ export default class AIToolboxPlugin extends Plugin {
 	 * Complete workflow: Extract audio from clipboard URL, transcribe it, and create a note.
 	 */
 	async transcribeFromClipboard(): Promise<void> {
-		try {
-			// Step 1: Extract audio from clipboard URL
-			const extractResult = await extractAudioFromClipboard(this.settings);
-
-			if (!extractResult) {
-				// Error already shown by extractAudioFromClipboard
-				return;
-			}
-
-			const {audioFilePath, sourceUrl} = extractResult;
-
-			// Step 2: Transcribe the audio using Whisper
-			const transcriptionResult = await transcribe(
-				audioFilePath,
-				{
-					endpoint: this.settings.azureEndpoint,
-					apiKey: this.settings.azureApiKey,
-					deploymentName: this.settings.azureDeploymentName,
-				},
-				{
-					includeTimestamps: this.settings.includeTimestamps,
-					language: this.settings.transcriptionLanguage || undefined
-				}
-			);
-
-			// Step 3: Create a note with the transcription
-			const noteFile = await createTranscriptionNote(
-				this.app,
-				transcriptionResult,
-				sourceUrl,
-				this.settings.includeTimestamps,
-				this.settings.outputFolder
-			);
-
-			// Step 4: Open the note
-			await openTranscriptionNote(this.app, noteFile);
-
-			new Notice('Transcription complete! Note opened.');
-
-		} catch (error) {
-			console.error('Transcription workflow error:', error);
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			new Notice(`Transcription failed: ${errorMessage}`);
+		// Create the transcription provider from settings
+		const provider = createTranscriptionProvider(this.settings);
+		if (!provider) {
+			new Notice('No transcription provider configured. Please configure a provider in settings.');
+			return;
 		}
+
+		// Build workflow options from settings
+		const options = {
+			includeTimestamps: this.settings.includeTimestamps,
+			language: this.settings.transcriptionLanguage || undefined,
+			outputFolder: this.settings.outputFolder,
+		};
+
+		await transcribeFromClipboard(this.app, provider, this.settings, options);
 	}
 
 	async loadSettings() {
