@@ -173,7 +173,7 @@ function spawnYtDlp(url: string, outputTemplate: string, settings: AIToolboxSett
         }
 
         const proc = spawn(ytdlpCommand, args, {
-            shell: true,
+            shell: false, // Don't pass back to the shell, prevents it seeing the templating as interpretable by the shell
         });
 
         let stdout = '';
