@@ -1,18 +1,41 @@
 import { App, Notice } from 'obsidian';
 import { AIToolboxSettings } from '../settings';
+import { ModelProvider, TranscriptionOptions } from '../providers';
 import { extractAudioFromClipboard } from './video-downloader';
-import { transcribe } from './whisper-transcriber';
 import { createTranscriptionNote, openTranscriptionNote } from './transcription-note';
 import * as fs from 'fs';
 
 /**
- * Complete workflow: Extract audio from clipboard URL, transcribe it, and create a note.
- * 
- * @param app - Obsidian App instance
- * @param settings - Plugin settings
+ * Options for the transcription workflow
  */
-export async function transcribeFromClipboard(app: App, settings: AIToolboxSettings): Promise<void> {
+export interface TranscriptionWorkflowOptions {
+    includeTimestamps: boolean;
+    language?: string;
+    outputFolder?: string;
+}
+
+/**
+ * Complete workflow: Extract audio from clipboard URL, transcribe it, and create a note.
+ * Uses dependency injection for the model provider, making the workflow provider-agnostic.
+ *
+ * @param app - Obsidian App instance
+ * @param provider - The model provider to use for transcription
+ * @param settings - Plugin settings for audio extraction configuration
+ * @param options - Transcription workflow options
+ */
+export async function transcribeFromClipboard(
+    app: App,
+    provider: ModelProvider,
+    settings: AIToolboxSettings,
+    options: TranscriptionWorkflowOptions
+): Promise<void> {
     try {
+        // Validate provider supports transcription
+        if (!provider.supportsTranscription()) {
+            new Notice(`Provider "${provider.providerName}" does not support transcription.`);
+            return;
+        }
+
         // Step 1: Extract audio from clipboard URL
         const extractResult = await extractAudioFromClipboard(settings);
 
@@ -23,27 +46,20 @@ export async function transcribeFromClipboard(app: App, settings: AIToolboxSetti
 
         const { audioFilePath, sourceUrl, metadata } = extractResult;
 
-        // Step 2: Transcribe the audio using Whisper
-        const transcriptionResult = await transcribe(
-            audioFilePath,
-            {
-                endpoint: settings.azureEndpoint,
-                apiKey: settings.azureApiKey,
-                deploymentName: settings.azureDeploymentName,
-            },
-            {
-                includeTimestamps: settings.includeTimestamps,
-                language: settings.transcriptionLanguage || undefined
-            }
-        );
+        // Step 2: Transcribe the audio using the injected provider
+        const transcriptionOptions: TranscriptionOptions = {
+            includeTimestamps: options.includeTimestamps,
+            language: options.language,
+        };
+        const transcriptionResult = await provider.transcribeAudio(audioFilePath, transcriptionOptions);
 
         // Step 3: Create a note with the transcription and video metadata
         const noteFile = await createTranscriptionNote(
             app,
             transcriptionResult,
             sourceUrl,
-            settings.includeTimestamps,
-            settings.outputFolder,
+            options.includeTimestamps,
+            options.outputFolder || '',
             metadata
         );
 

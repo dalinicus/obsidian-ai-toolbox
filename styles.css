@@ -68,3 +68,84 @@ If your plugin does not need CSS, delete this file.
 .settings-advanced-container.is-expanded {
 	display: block;
 }
+
+/* Provider container styles */
+.provider-container {
+	margin-bottom: 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px;
+}
+
+.provider-header {
+	cursor: pointer;
+	user-select: none;
+}
+
+.provider-header:hover .setting-item-name {
+	color: var(--text-accent);
+}
+
+.provider-content.is-collapsed {
+	display: none;
+}
+
+.provider-content.is-expanded {
+	display: block;
+	padding-top: 8px;
+}
+
+/* Model container styles */
+.model-container {
+	margin-left: 16px;
+	margin-bottom: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 8px;
+}
+
+.model-header {
+	cursor: pointer;
+	user-select: none;
+}
+
+.model-header:hover .setting-item-name {
+	color: var(--text-accent);
+}
+
+.model-content.is-collapsed {
+	display: none;
+}
+
+.model-content.is-expanded {
+	display: block;
+	padding-top: 8px;
+}
+
+/* Model capabilities section */
+.model-capabilities {
+	display: flex;
+	flex-direction: row;
+	gap: 16px;
+	margin-top: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.model-capabilities .setting-item {
+	flex: 0 0 auto;
+	padding: 0;
+	border: none;
+}
+
+.model-capability-icon {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 4px;
+	vertical-align: middle;
+}
+
+.model-capability-icon svg {
+	width: 16px;
+	height: 16px;
+}

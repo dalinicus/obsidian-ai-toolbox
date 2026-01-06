@@ -85,9 +85,10 @@ export interface VideoPlatformHandler {
     getYtDlpArgs(): YtDlpPlatformArgs;
 
     /**
-     * Gets the default title to use for notes when metadata is unavailable.
-     * @returns Default title string for this platform
+     * Gets the title to use for notes based on video metadata.
+     * @param metadata - Optional video metadata from yt-dlp
+     * @returns Title string for this video
      */
-    getDefaultTitle(): string;
+    getTitle(metadata?: VideoMetadata): string;
 }
 

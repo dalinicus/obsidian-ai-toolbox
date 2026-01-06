@@ -2,6 +2,7 @@ import {
     VideoPlatformHandler,
     EmbedConfig,
     YtDlpPlatformArgs,
+    VideoMetadata,
 } from './video-platform-handler';
 
 /**
@@ -76,8 +77,8 @@ export class YouTubeHandler implements VideoPlatformHandler {
         };
     }
 
-    getDefaultTitle(): string {
-        return 'Video';
+    getTitle(metadata?: VideoMetadata): string {
+        return metadata?.title || 'Video';
     }
 }
 

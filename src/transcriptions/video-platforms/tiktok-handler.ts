@@ -91,7 +91,9 @@ export class TikTokHandler implements VideoPlatformHandler {
         };
     }
 
-    getDefaultTitle(): string {
+    getTitle(): string {
+        // TikTok doesn't have proper video titles - yt-dlp returns the description
+        // as the title, which is not suitable for filenames. Always use platform name.
         return 'TikTok';
     }
 }

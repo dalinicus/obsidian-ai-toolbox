@@ -1,5 +1,5 @@
 import { App, Notice, TFile } from 'obsidian';
-import { TranscriptionResult } from './whisper-transcriber';
+import { TranscriptionResult } from '../providers';
 import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
 
 /**
@@ -7,7 +7,7 @@ import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
  *
  * @param app - Obsidian App instance
  * @param result - Transcription result from Whisper
- * @param sourceUrl - Optional source URL of the video
+ * @param sourceUrl - Source URL of the video
  * @param includeTimestamps - Whether to include timestamps in the note
  * @param notesFolder - Optional folder path where the note should be created
  * @param videoMetadata - Optional video metadata (description, tags)
@@ -16,14 +16,14 @@ import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
 export async function createTranscriptionNote(
 	app: App,
 	result: TranscriptionResult,
-	sourceUrl?: string,
+	sourceUrl: string,
 	includeTimestamps = false,
 	notesFolder = '',
 	videoMetadata?: VideoMetadata
 ): Promise<TFile> {
 	try {
 		// Generate note filename from video metadata
-		const noteFilename = generateNoteFilename(videoMetadata, sourceUrl);
+		const noteFilename = generateNoteFilename(sourceUrl, videoMetadata);
 
 		// Build full path with optional folder
 		let notePath = noteFilename;
@@ -73,29 +73,24 @@ export async function openTranscriptionNote(app: App, file: TFile): Promise<void
 /**
  * Generates a filename for the transcription note based on video metadata.
  * Format: "{title} by {uploader} - {timestamp}.md"
- * For TikTok, uses "TikTok" as the title since TikTok titles are often unavailable.
  *
+ * @param sourceUrl - Source URL to detect platform
  * @param videoMetadata - Video metadata containing title and uploader
- * @param sourceUrl - Source URL to detect platform (for TikTok handling)
  * @returns Markdown filename for the note
  */
 export function generateNoteFilename(
-	videoMetadata?: VideoMetadata,
-	sourceUrl?: string
+	sourceUrl: string,
+	videoMetadata?: VideoMetadata
 ): string {
 	// Add timestamp to ensure uniqueness
 	const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
 
-	// Determine title using platform handler or metadata
-	let title: string;
-	const handler = sourceUrl ? videoPlatformRegistry.findHandlerForUrl(sourceUrl) : undefined;
-	if (videoMetadata?.title) {
-		title = videoMetadata.title;
-	} else if (handler) {
-		title = handler.getDefaultTitle();
-	} else {
-		title = 'Video';
+	// Determine title using platform handler (each platform decides how to handle metadata)
+	const handler = videoPlatformRegistry.findHandlerForUrl(sourceUrl);
+	if (!handler) {
+		throw new Error(`No handler found for URL: ${sourceUrl}`);
 	}
+	const title = handler.getTitle(videoMetadata);
 
 	// Determine uploader
 	const uploader = videoMetadata?.uploader || 'Unknown';
