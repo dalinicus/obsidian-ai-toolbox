@@ -54,6 +54,8 @@ export interface WorkflowConfig {
 	promptText: string;
 	provider: ProviderModelSelection | null;
 	outputType: WorkflowOutputType;
+	showInCommand: boolean;
+	availableAsInput: boolean;
 }
 
 /**
@@ -63,7 +65,9 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	name: 'New workflow',
 	promptText: '',
 	provider: null,
-	outputType: 'popup'
+	outputType: 'popup',
+	showInCommand: true,
+	availableAsInput: false
 };
 
 export interface AIToolboxSettings {

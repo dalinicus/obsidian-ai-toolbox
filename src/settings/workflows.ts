@@ -141,15 +141,45 @@ function displayWorkflowSettings(
 			textArea.inputEl.addClass('workflow-textarea');
 		});
 
-	// Output type selection
+	// List in Workload Command toggle
 	new Setting(contentContainer)
-		.setName('Output type')
-		.setDesc('Choose how to display the AI response')
-		.addDropdown(dropdown => dropdown
-			.addOptions(OUTPUT_TYPE_OPTIONS)
-			.setValue(workflow.outputType || 'popup')
+		.setName('List in "Run AI Workflow" Command')
+		.setDesc('Show this workflow in the list when running the "Run AI Workflow" command')
+		.addToggle(toggle => toggle
+			.setValue(workflow.showInCommand ?? true)
 			.onChange(async (value) => {
-				workflow.outputType = value as WorkflowOutputType;
+				workflow.showInCommand = value;
+				await plugin.saveSettings();
+				// Preserve expand state when refreshing
+				const isExpanded = contentContainer.classList.contains('is-expanded');
+				if (isExpanded) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
+			}));
+
+	// Output type selection (only show if workflow is listed in command)
+	if (workflow.showInCommand ?? true) {
+		new Setting(contentContainer)
+			.setName('Output type')
+			.setDesc('Choose how to display the AI response')
+			.addDropdown(dropdown => dropdown
+				.addOptions(OUTPUT_TYPE_OPTIONS)
+				.setValue(workflow.outputType || 'popup')
+				.onChange(async (value) => {
+					workflow.outputType = value as WorkflowOutputType;
+					await plugin.saveSettings();
+				}));
+	}
+
+	// Make available as input to other workflows toggle
+	new Setting(contentContainer)
+		.setName('Make available as input to other workflows')
+		.setDesc('Allow this workflow to be used as input context for other workflows')
+		.addToggle(toggle => toggle
+			.setValue(workflow.availableAsInput ?? false)
+			.onChange(async (value) => {
+				workflow.availableAsInput = value;
 				await plugin.saveSettings();
 			}));
 

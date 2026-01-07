@@ -18,7 +18,7 @@ export default class AIToolboxPlugin extends Plugin {
 		// Add command to execute custom workflows
 		this.addCommand({
 			id: 'execute-workflow',
-			name: 'Execute custom workflow',
+			name: 'Run AI Workflow',
 			callback: () => this.showWorkflowSuggester()
 		});
 

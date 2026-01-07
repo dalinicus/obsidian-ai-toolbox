@@ -151,6 +151,7 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Provide defaults and validation in settings.
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
+- When refreshing collapsible settings sections, preserve the expand state by setting `callbacks.setExpandState({ workflowId: workflow.id })` before calling `callbacks.refresh()` if the section is currently expanded.
 
 **Don't**
 - Introduce network calls without an obvious user-facing reason and documentation.
