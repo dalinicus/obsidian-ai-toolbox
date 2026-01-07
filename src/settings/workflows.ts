@@ -36,7 +36,7 @@ export function displayWorkflowsSettings(
 ): void {
 	// Add workflow button
 	new Setting(containerEl)
-		.setName('Custom workflows')
+		.setName('Workflows')
 		.setDesc('Configure custom workflows to use with your AI providers')
 		.addButton(button => button
 			.setButtonText('Add workflow')

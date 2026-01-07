@@ -1,12 +1,17 @@
-import { Setting, setIcon } from "obsidian";
+import { Setting, setIcon, ButtonComponent, Notice } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	AIProviderConfig,
 	AIProviderType,
 	AIModelConfig,
 	ExpandOnNextRenderState,
-	generateId
+	generateId,
+	DEFAULT_OPENAI_ENDPOINT
 } from "./types";
+import { createModelProvider, ModelProviderConfig } from "../providers";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 /**
  * Callbacks for the provider settings tab to communicate with the main settings tab
@@ -15,6 +20,218 @@ export interface ProviderSettingsCallbacks {
 	getExpandState: () => ExpandOnNextRenderState;
 	setExpandState: (state: ExpandOnNextRenderState) => void;
 	refresh: () => void;
+}
+
+/**
+ * State for test button
+ */
+type TestButtonState = 'ready' | 'testing' | 'success' | 'error';
+
+/**
+ * Generate a minimal valid WAV file with audio content
+ * Creates a 1-second WAV file at 16kHz mono with a simple tone pattern
+ */
+function generateTestAudioFile(): Buffer {
+	const sampleRate = 16000;
+	const duration = 1; // 1 second
+	const numSamples = sampleRate * duration;
+	const numChannels = 1;
+	const bitsPerSample = 16;
+	const bytesPerSample = bitsPerSample / 8;
+	const blockAlign = numChannels * bytesPerSample;
+	const byteRate = sampleRate * blockAlign;
+	const dataSize = numSamples * blockAlign;
+	const fileSize = 36 + dataSize;
+
+	const buffer = Buffer.alloc(44 + dataSize);
+	let offset = 0;
+
+	// RIFF header
+	buffer.write('RIFF', offset); offset += 4;
+	buffer.writeUInt32LE(fileSize, offset); offset += 4;
+	buffer.write('WAVE', offset); offset += 4;
+
+	// fmt chunk
+	buffer.write('fmt ', offset); offset += 4;
+	buffer.writeUInt32LE(16, offset); offset += 4; // fmt chunk size
+	buffer.writeUInt16LE(1, offset); offset += 2; // audio format (1 = PCM)
+	buffer.writeUInt16LE(numChannels, offset); offset += 2;
+	buffer.writeUInt32LE(sampleRate, offset); offset += 4;
+	buffer.writeUInt32LE(byteRate, offset); offset += 4;
+	buffer.writeUInt16LE(blockAlign, offset); offset += 2;
+	buffer.writeUInt16LE(bitsPerSample, offset); offset += 2;
+
+	// data chunk
+	buffer.write('data', offset); offset += 4;
+	buffer.writeUInt32LE(dataSize, offset); offset += 4;
+
+	// Generate audio data - simple pattern that sounds like speech
+	// Using multiple frequencies to create a more natural sound
+	for (let i = 0; i < numSamples; i++) {
+		const t = i / sampleRate;
+		// Mix of frequencies to simulate speech-like sound
+		const freq1 = 200 + Math.sin(t * 10) * 50; // Varying fundamental frequency
+		const freq2 = 800 + Math.sin(t * 15) * 100; // First formant
+		const freq3 = 2400; // Second formant
+
+		// Envelope to create word-like pattern
+		const envelope = Math.sin(t * Math.PI) * 0.3;
+
+		const sample = envelope * (
+			Math.sin(2 * Math.PI * freq1 * t) * 0.5 +
+			Math.sin(2 * Math.PI * freq2 * t) * 0.3 +
+			Math.sin(2 * Math.PI * freq3 * t) * 0.2
+		);
+
+		const value = Math.floor(sample * 32767);
+		buffer.writeInt16LE(value, offset);
+		offset += 2;
+	}
+
+	return buffer;
+}
+
+/**
+ * Get a temporary test audio file path with the embedded test audio
+ */
+function getTestAudioFile(): string {
+	const tempDir = os.tmpdir();
+	const testAudioPath = path.join(tempDir, 'obsidian-ai-toolbox-test.wav');
+
+	// Always regenerate the test audio file to ensure it's valid
+	const audioBuffer = generateTestAudioFile();
+	fs.writeFileSync(testAudioPath, audioBuffer);
+
+	return testAudioPath;
+}
+
+/**
+ * Check if a model has all required configuration for testing
+ */
+function isModelConfigComplete(provider: AIProviderConfig, model: AIModelConfig): boolean {
+	// Must have at least one capability enabled
+	if (!model.supportsChat && !model.supportsTranscription) {
+		return false;
+	}
+
+	// Must have API key
+	if (!provider.apiKey) {
+		return false;
+	}
+
+	// Must have model ID
+	if (!model.modelId) {
+		return false;
+	}
+
+	// Azure-specific requirements
+	if (provider.type === 'azure-openai') {
+		if (!provider.endpoint) {
+			return false;
+		}
+		if (!model.deploymentName) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Build a ModelProviderConfig from provider and model settings
+ */
+function buildProviderConfig(provider: AIProviderConfig, model: AIModelConfig): ModelProviderConfig {
+	const endpoint = provider.endpoint || (provider.type === 'openai' ? DEFAULT_OPENAI_ENDPOINT : '');
+	return {
+		id: provider.id,
+		name: provider.name,
+		modelDisplayName: model.name,
+		type: provider.type,
+		endpoint: endpoint,
+		apiKey: provider.apiKey,
+		modelId: model.modelId,
+		deploymentName: model.deploymentName || model.modelId,
+		supportsChat: model.supportsChat,
+		supportsTranscription: model.supportsTranscription,
+	};
+}
+
+/**
+ * Test a model's chat capability
+ */
+async function testModelChat(provider: AIProviderConfig, model: AIModelConfig): Promise<{ success: boolean; error?: string }> {
+	try {
+		const config = buildProviderConfig(provider, model);
+		const modelProvider = createModelProvider(config);
+
+		// Send minimal test message
+		await modelProvider.sendChat([
+			{ role: 'user', content: 'Hello' }
+		], {
+			maxTokens: 10 // Keep it minimal to reduce cost
+		});
+
+		return { success: true };
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		return { success: false, error: errorMessage };
+	}
+}
+
+/**
+ * Test a model's transcription capability
+ */
+async function testModelTranscription(provider: AIProviderConfig, model: AIModelConfig): Promise<{ success: boolean; error?: string }> {
+	try {
+		const config = buildProviderConfig(provider, model);
+		const modelProvider = createModelProvider(config);
+
+		// Get test audio file
+		const testAudioPath = getTestAudioFile();
+
+		// Transcribe the test audio
+		await modelProvider.transcribeAudio(testAudioPath, {
+			includeTimestamps: false
+		});
+
+		return { success: true };
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		return { success: false, error: errorMessage };
+	}
+}
+
+/**
+ * Test a model based on its enabled capabilities
+ */
+async function testModel(provider: AIProviderConfig, model: AIModelConfig): Promise<{ success: boolean; error?: string }> {
+	const results: Array<{ capability: string; success: boolean; error?: string }> = [];
+
+	// Test chat if enabled
+	if (model.supportsChat) {
+		const chatResult = await testModelChat(provider, model);
+		results.push({ capability: 'Chat', ...chatResult });
+	}
+
+	// Test transcription if enabled
+	if (model.supportsTranscription) {
+		const transcriptionResult = await testModelTranscription(provider, model);
+		results.push({ capability: 'Transcription', ...transcriptionResult });
+	}
+
+	// Check if all tests passed
+	const allPassed = results.every(r => r.success);
+
+	if (allPassed) {
+		return { success: true };
+	} else {
+		// Collect error messages
+		const errors = results
+			.filter(r => !r.success)
+			.map(r => `${r.capability}: ${r.error}`)
+			.join('; ');
+		return { success: false, error: errors };
+	}
 }
 
 /**
@@ -269,6 +486,48 @@ function displayModelSettings(
 				await plugin.saveSettings();
 			}));
 
+	// Test button - declare early so it can be referenced in field change handlers
+	let testButton: ButtonComponent;
+	let testButtonState: TestButtonState = 'ready';
+
+	const updateTestButton = () => {
+		if (!testButton) return;
+
+		const isConfigComplete = isModelConfigComplete(provider, model);
+		testButton.setDisabled(!isConfigComplete || testButtonState === 'testing');
+
+		// Update tooltip based on enabled capabilities
+		const capabilities: string[] = [];
+		if (model.supportsChat) capabilities.push('chat');
+		if (model.supportsTranscription) capabilities.push('transcription');
+		const capabilityText = capabilities.length > 0
+			? capabilities.join(' and ')
+			: 'model';
+		testButton.setTooltip(`Test ${capabilityText} capability`);
+
+		// Update button text and class based on state
+		switch (testButtonState) {
+			case 'ready':
+				testButton.setButtonText('Test');
+				testButton.buttonEl.removeClass('mod-warning', 'mod-success');
+				break;
+			case 'testing':
+				testButton.setButtonText('Testing...');
+				testButton.buttonEl.removeClass('mod-warning', 'mod-success');
+				break;
+			case 'success':
+				testButton.setButtonText('✓ Success');
+				testButton.buttonEl.removeClass('mod-warning');
+				testButton.buttonEl.addClass('mod-success');
+				break;
+			case 'error':
+				testButton.setButtonText('✗ Failed');
+				testButton.buttonEl.removeClass('mod-success');
+				testButton.buttonEl.addClass('mod-warning');
+				break;
+		}
+	};
+
 	// Deployment name (for Azure)
 	if (provider.type === 'azure-openai') {
 		new Setting(contentContainer)
@@ -280,6 +539,7 @@ function displayModelSettings(
 				.onChange(async (value) => {
 					model.deploymentName = value;
 					await plugin.saveSettings();
+					updateTestButton();
 				}));
 	}
 
@@ -293,6 +553,7 @@ function displayModelSettings(
 			.onChange(async (value) => {
 				model.modelId = value;
 				await plugin.saveSettings();
+				updateTestButton();
 			}));
 
 	// Model capabilities section
@@ -305,6 +566,8 @@ function displayModelSettings(
 			.onChange(async (value) => {
 				model.supportsChat = value;
 				await plugin.saveSettings();
+				// Update test button state when capability changes
+				updateTestButton();
 			}));
 	const chatNameEl = chatSetting.nameEl;
 	const chatIcon = chatNameEl.createSpan({ cls: 'model-capability-icon' });
@@ -318,10 +581,48 @@ function displayModelSettings(
 			.onChange(async (value) => {
 				model.supportsTranscription = value;
 				await plugin.saveSettings();
+				// Update test button state when capability changes
+				updateTestButton();
 			}));
 	const transcriptionNameEl = transcriptionSetting.nameEl;
 	const transcriptionIcon = transcriptionNameEl.createSpan({ cls: 'model-capability-icon' });
 	setIcon(transcriptionIcon, 'audio-lines');
 	transcriptionNameEl.appendText(' Transcription');
+
+	// Test button (inline with capabilities)
+	new Setting(capabilitiesContainer)
+		.addButton(button => {
+			testButton = button;
+
+			button.onClick(async () => {
+				// Reset to testing state
+				testButtonState = 'testing';
+				updateTestButton();
+
+				// Run the test
+				const result = await testModel(provider, model);
+
+				// Update state based on result
+				if (result.success) {
+					testButtonState = 'success';
+					new Notice('✓ Model test successful');
+				} else {
+					testButtonState = 'error';
+					// Show error as Notice and log to console
+					new Notice(`✗ Model test failed: ${result.error}`, 5000);
+					console.error('Model test failed:', result.error);
+				}
+				updateTestButton();
+
+				// Reset to ready state after 3 seconds
+				setTimeout(() => {
+					testButtonState = 'ready';
+					updateTestButton();
+				}, 3000);
+			});
+
+			// Initial state
+			updateTestButton();
+		});
 }
 
