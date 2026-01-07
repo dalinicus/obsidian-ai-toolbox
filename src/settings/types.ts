@@ -41,26 +41,26 @@ export interface ProviderModelSelection {
 }
 
 /**
- * Output type options for prompt execution
+ * Output type options for workflow execution
  */
-export type PromptOutputType = 'popup' | 'new-note' | 'at-cursor';
+export type WorkflowOutputType = 'popup' | 'new-note' | 'at-cursor';
 
 /**
- * Configuration for a custom prompt
+ * Configuration for a custom workflow
  */
-export interface PromptConfig {
+export interface WorkflowConfig {
 	id: string;
 	name: string;
 	promptText: string;
 	provider: ProviderModelSelection | null;
-	outputType: PromptOutputType;
+	outputType: WorkflowOutputType;
 }
 
 /**
- * Default configuration for a new prompt
+ * Default configuration for a new workflow
  */
-export const DEFAULT_PROMPT_CONFIG: Omit<PromptConfig, 'id'> = {
-	name: 'New prompt',
+export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
+	name: 'New workflow',
 	promptText: '',
 	provider: null,
 	outputType: 'popup'
@@ -78,8 +78,8 @@ export interface AIToolboxSettings {
 	// New provider-based settings
 	providers: AIProviderConfig[];
 	transcriptionProvider: ProviderModelSelection | null;
-	// Custom prompts
-	prompts: PromptConfig[];
+	// Custom workflows
+	workflows: WorkflowConfig[];
 }
 
 /**
@@ -100,13 +100,13 @@ export const DEFAULT_SETTINGS: AIToolboxSettings = {
 	outputFolder: '',
 	providers: [],
 	transcriptionProvider: null,
-	prompts: []
+	workflows: []
 }
 
 /**
  * Supported settings tab types
  */
-export type SettingsTabType = 'providers' | 'prompts' | 'transcription';
+export type SettingsTabType = 'providers' | 'workflows' | 'transcription';
 
 /**
  * State for tracking which items should be expanded on next render
@@ -114,6 +114,6 @@ export type SettingsTabType = 'providers' | 'prompts' | 'transcription';
 export interface ExpandOnNextRenderState {
 	providerId?: string;
 	modelId?: string;
-	promptId?: string;
+	workflowId?: string;
 }
 

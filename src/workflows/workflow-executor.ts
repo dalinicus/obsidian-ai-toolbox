@@ -1,34 +1,34 @@
 import { App, MarkdownView, Modal, Notice, TFile } from 'obsidian';
-import { PromptConfig, AIToolboxSettings } from '../settings';
-import { createPromptProvider, ChatMessage } from '../providers';
+import { WorkflowConfig, AIToolboxSettings } from '../settings';
+import { createWorkflowProvider, ChatMessage } from '../providers';
 import { generateFilenameTimestamp } from '../utils/date-utils';
 
 /**
- * Modal to display the AI response from a prompt execution
+ * Modal to display the AI response from a workflow execution
  */
-export class PromptResultModal extends Modal {
-	private promptName: string;
+export class WorkflowResultModal extends Modal {
+	private workflowName: string;
 	private response: string;
 
-	constructor(app: App, promptName: string, response: string) {
+	constructor(app: App, workflowName: string, response: string) {
 		super(app);
-		this.promptName = promptName;
+		this.workflowName = workflowName;
 		this.response = response;
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
 
-		contentEl.createEl('h2', { text: this.promptName });
+		contentEl.createEl('h2', { text: this.workflowName });
 
-		const responseContainer = contentEl.createDiv('prompt-response-container');
+		const responseContainer = contentEl.createDiv('workflow-response-container');
 		responseContainer.createEl('pre', {
 			text: this.response,
-			cls: 'prompt-response-content'
+			cls: 'workflow-response-content'
 		});
 
 		// Add copy button
-		const buttonContainer = contentEl.createDiv('prompt-response-buttons');
+		const buttonContainer = contentEl.createDiv('workflow-response-buttons');
 		const copyButton = buttonContainer.createEl('button', { text: 'Copy to clipboard' });
 		copyButton.addEventListener('click', async () => {
 			await navigator.clipboard.writeText(this.response);
@@ -70,20 +70,20 @@ function insertAtCursor(app: App, text: string): void {
 }
 
 /**
- * Create a new note with the prompt result.
+ * Create a new note with the workflow result.
  * Honors Obsidian's default new note location setting.
  */
 async function createNoteWithResult(
 	app: App,
-	promptName: string,
+	workflowName: string,
 	promptText: string,
 	response: string
 ): Promise<void> {
 	const timestamp = generateFilenameTimestamp();
-	const noteTitle = `${promptName} - ${timestamp}`;
+	const noteTitle = `${workflowName} - ${timestamp}`;
 
 	// Build note content with prompt and response
-	const noteContent = `# ${promptName}
+	const noteContent = `# ${workflowName}
 
 ## Prompt
 
@@ -137,70 +137,70 @@ ${response}
 }
 
 /**
- * Execute a prompt using its configured provider and display the result.
+ * Execute a workflow using its configured provider and display the result.
  *
  * @param app - Obsidian App instance
  * @param settings - Plugin settings
- * @param prompt - The prompt configuration to execute
+ * @param workflow - The workflow configuration to execute
  */
-export async function executePrompt(
+export async function executeWorkflow(
 	app: App,
 	settings: AIToolboxSettings,
-	prompt: PromptConfig
+	workflow: WorkflowConfig
 ): Promise<void> {
-	// Validate prompt has a provider configured
-	if (!prompt.provider) {
-		new Notice(`Prompt "${prompt.name}" has no provider configured. Please configure a provider in settings.`);
+	// Validate workflow has a provider configured
+	if (!workflow.provider) {
+		new Notice(`Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
 		return;
 	}
 
-	// Validate prompt has text
-	if (!prompt.promptText.trim()) {
-		new Notice(`Prompt "${prompt.name}" has no prompt text. Please add prompt text in settings.`);
+	// Validate workflow has text
+	if (!workflow.promptText.trim()) {
+		new Notice(`Workflow "${workflow.name}" has no prompt text. Please add prompt text in settings.`);
 		return;
 	}
 
 	// Create the provider
-	const provider = createPromptProvider(settings, prompt);
+	const provider = createWorkflowProvider(settings, workflow);
 	if (!provider) {
-		new Notice(`Could not find the configured provider for prompt "${prompt.name}". Please check your settings.`);
+		new Notice(`Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
 		return;
 	}
 
 	// Validate provider supports chat
 	if (!provider.supportsChat()) {
-		new Notice(`The provider for prompt "${prompt.name}" does not support chat. Please select a chat-capable model.`);
+		new Notice(`The provider for workflow "${workflow.name}" does not support chat. Please select a chat-capable model.`);
 		return;
 	}
 
 	try {
-		new Notice(`Executing prompt: ${prompt.name}...`);
+		new Notice(`Executing workflow: ${workflow.name}...`);
 
 		// Build chat messages with the prompt text as a user message
 		const messages: ChatMessage[] = [
-			{ role: 'user', content: prompt.promptText }
+			{ role: 'user', content: workflow.promptText }
 		];
 
 		// Send the chat request
 		const result = await provider.sendChat(messages);
 
 		// Handle output based on configured output type
-		const outputType = prompt.outputType || 'popup';
+		const outputType = workflow.outputType || 'popup';
 
 		if (outputType === 'new-note') {
-			await createNoteWithResult(app, prompt.name, prompt.promptText, result.content);
+			await createNoteWithResult(app, workflow.name, workflow.promptText, result.content);
 		} else if (outputType === 'at-cursor') {
 			insertAtCursor(app, result.content);
 		} else {
 			// Default: show in popup modal
-			const resultModal = new PromptResultModal(app, prompt.name, result.content);
+			const resultModal = new WorkflowResultModal(app, workflow.name, result.content);
 			resultModal.open();
 		}
 
 	} catch (error) {
-		console.error('Prompt execution error:', error);
+		console.error('Workflow execution error:', error);
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		new Notice(`Failed to execute prompt: ${errorMessage}`);
+		new Notice(`Failed to execute workflow: ${errorMessage}`);
 	}
 }
 

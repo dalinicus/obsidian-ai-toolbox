@@ -2,7 +2,7 @@ import { Notice, Plugin } from 'obsidian';
 import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings/index";
 import { createTranscriptionProvider } from "./providers";
 import { transcribeFromClipboard } from "./transcriptions/transcription-workflow";
-import { PromptSuggesterModal, executePrompt } from "./prompts";
+import { WorkflowSuggesterModal, executeWorkflow } from "./workflows";
 
 export default class AIToolboxPlugin extends Plugin {
 	settings: AIToolboxSettings;
@@ -15,11 +15,11 @@ export default class AIToolboxPlugin extends Plugin {
 			void this.transcribeFromClipboard();
 		});
 
-		// Add command to execute custom prompts
+		// Add command to execute custom workflows
 		this.addCommand({
-			id: 'execute-prompt',
-			name: 'Execute custom prompt',
-			callback: () => this.showPromptSuggester()
+			id: 'execute-workflow',
+			name: 'Execute custom workflow',
+			callback: () => this.showWorkflowSuggester()
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
@@ -27,18 +27,18 @@ export default class AIToolboxPlugin extends Plugin {
 	}
 
 	/**
-	 * Show the prompt suggester modal and execute the selected prompt.
+	 * Show the workflow suggester modal and execute the selected workflow.
 	 */
-	private showPromptSuggester(): void {
-		const prompts = this.settings.prompts;
+	private showWorkflowSuggester(): void {
+		const workflows = this.settings.workflows;
 
-		if (prompts.length === 0) {
-			new Notice('No prompts configured. Please add prompts in settings.');
+		if (workflows.length === 0) {
+			new Notice('No workflows configured. Please add workflows in settings.');
 			return;
 		}
 
-		const modal = new PromptSuggesterModal(this.app, prompts, (prompt) => {
-			void executePrompt(this.app, this.settings, prompt);
+		const modal = new WorkflowSuggesterModal(this.app, workflows, (workflow) => {
+			void executeWorkflow(this.app, this.settings, workflow);
 		});
 		modal.open();
 	}

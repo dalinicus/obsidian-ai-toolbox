@@ -150,46 +150,46 @@ If your plugin does not need CSS, delete this file.
 	height: 16px;
 }
 
-/* Prompt container styles */
-.prompt-container {
+/* Workflow container styles */
+.workflow-container {
 	margin-bottom: 16px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	padding: 8px;
 }
 
-.prompt-header {
+.workflow-header {
 	cursor: pointer;
 	user-select: none;
 }
 
-.prompt-header:hover .setting-item-name {
+.workflow-header:hover .setting-item-name {
 	color: var(--text-accent);
 }
 
-.prompt-content.is-collapsed {
+.workflow-content.is-collapsed {
 	display: none;
 }
 
-.prompt-content.is-expanded {
+.workflow-content.is-expanded {
 	display: block;
 	padding-top: 8px;
 }
 
-.prompt-textarea {
+.workflow-textarea {
 	width: 100%;
 	min-height: 120px;
 	resize: vertical;
 }
 
-/* Prompt result modal styles */
-.prompt-response-container {
+/* Workflow result modal styles */
+.workflow-response-container {
 	margin: 16px 0;
 	max-height: 400px;
 	overflow-y: auto;
 }
 
-.prompt-response-content {
+.workflow-response-content {
 	white-space: pre-wrap;
 	word-wrap: break-word;
 	padding: 12px;
@@ -199,7 +199,7 @@ If your plugin does not need CSS, delete this file.
 	line-height: 1.5;
 }
 
-.prompt-response-buttons {
+.workflow-response-buttons {
 	display: flex;
 	gap: 8px;
 	justify-content: flex-end;

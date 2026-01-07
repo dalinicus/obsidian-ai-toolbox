@@ -1,4 +1,4 @@
-import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, PromptConfig, ProviderModelSelection } from '../settings/index';
+import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, WorkflowConfig, ProviderModelSelection } from '../settings/index';
 import { ModelProvider, ModelProviderConfig } from './types';
 import { AzureOpenAIModelProvider } from './azure-openai-provider';
 import { OpenAIModelProvider } from './openai-provider';
@@ -94,17 +94,17 @@ export function createTranscriptionProvider(settings: AIToolboxSettings): ModelP
 }
 
 /**
- * Create a provider for a specific prompt configuration.
+ * Create a provider for a specific workflow configuration.
  *
  * @param settings - Plugin settings containing provider configuration
- * @param prompt - The prompt configuration to create a provider for
- * @returns A configured ModelProvider for the prompt, or null if not configured
+ * @param workflow - The workflow configuration to create a provider for
+ * @returns A configured ModelProvider for the workflow, or null if not configured
  * @throws ProviderCreationError if the provider cannot be created
  */
-export function createPromptProvider(settings: AIToolboxSettings, prompt: PromptConfig): ModelProvider | null {
-	if (!prompt.provider) {
+export function createWorkflowProvider(settings: AIToolboxSettings, workflow: WorkflowConfig): ModelProvider | null {
+	if (!workflow.provider) {
 		return null;
 	}
 
-	return createProviderFromSelection(settings, prompt.provider);
+	return createProviderFromSelection(settings, workflow.provider);
 }

@@ -22,7 +22,7 @@ export { OpenAIModelProvider } from './openai-provider';
 export {
 	createModelProvider,
 	createTranscriptionProvider,
-	createPromptProvider,
+	createWorkflowProvider,
 	ProviderCreationError,
 } from './model-provider-factory';
 

@@ -2,18 +2,18 @@ import { App, PluginSettingTab } from "obsidian";
 import AIToolboxPlugin from "../main";
 import { SettingsTabType, ExpandOnNextRenderState } from "./types";
 import { displayProvidersSettings, ProviderSettingsCallbacks } from "./providers";
-import { displayPromptsSettings, PromptSettingsCallbacks } from "./prompts";
+import { displayWorkflowsSettings, WorkflowSettingsCallbacks } from "./workflows";
 import { displayTranscriptionSettings, TranscriptionSettingsCallbacks } from "./transcription";
 
 // Re-export all types and constants from types.ts for backward compatibility
-export { DEFAULT_OPENAI_ENDPOINT, generateId, DEFAULT_SETTINGS, DEFAULT_PROMPT_CONFIG } from "./types";
+export { DEFAULT_OPENAI_ENDPOINT, generateId, DEFAULT_SETTINGS, DEFAULT_WORKFLOW_CONFIG } from "./types";
 export type {
 	AIProviderType,
 	AIModelConfig,
 	AIProviderConfig,
 	ProviderModelSelection,
-	PromptConfig,
-	PromptOutputType,
+	WorkflowConfig,
+	WorkflowOutputType,
 	AIToolboxSettings,
 	SettingsTabType,
 	ExpandOnNextRenderState
@@ -44,8 +44,8 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 			cls: 'settings-tab-button'
 		});
 
-		const promptsTabButton = tabHeader.createEl('button', {
-			text: 'Prompts',
+		const workflowsTabButton = tabHeader.createEl('button', {
+			text: 'Workflows',
 			cls: 'settings-tab-button'
 		});
 
@@ -57,14 +57,14 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 		const showTab = (tab: SettingsTabType) => {
 			this.activeTab = tab;
 			providersTabButton.classList.toggle('active', tab === 'providers');
-			promptsTabButton.classList.toggle('active', tab === 'prompts');
+			workflowsTabButton.classList.toggle('active', tab === 'workflows');
 			transcriptionTabButton.classList.toggle('active', tab === 'transcription');
 			tabContent.empty();
 
 			if (tab === 'providers') {
 				this.displayProvidersTab(tabContent);
-			} else if (tab === 'prompts') {
-				this.displayPromptsTab(tabContent);
+			} else if (tab === 'workflows') {
+				this.displayWorkflowsTab(tabContent);
 			} else if (tab === 'transcription') {
 				this.displayTranscriptionTab(tabContent);
 			} else {
@@ -74,7 +74,7 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 		};
 
 		providersTabButton.addEventListener('click', () => showTab('providers'));
-		promptsTabButton.addEventListener('click', () => showTab('prompts'));
+		workflowsTabButton.addEventListener('click', () => showTab('workflows'));
 		transcriptionTabButton.addEventListener('click', () => showTab('transcription'));
 
 		showTab(this.activeTab);
@@ -89,13 +89,13 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 		displayProvidersSettings(containerEl, this.plugin, callbacks);
 	}
 
-	private displayPromptsTab(containerEl: HTMLElement): void {
-		const callbacks: PromptSettingsCallbacks = {
+	private displayWorkflowsTab(containerEl: HTMLElement): void {
+		const callbacks: WorkflowSettingsCallbacks = {
 			getExpandState: () => this.expandOnNextRender,
 			setExpandState: (state) => { this.expandOnNextRender = state; },
 			refresh: () => this.display()
 		};
-		displayPromptsSettings(containerEl, this.plugin, callbacks);
+		displayWorkflowsSettings(containerEl, this.plugin, callbacks);
 	}
 
 	private displayTranscriptionTab(containerEl: HTMLElement): void {
