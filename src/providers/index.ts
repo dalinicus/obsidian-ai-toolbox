@@ -5,6 +5,10 @@ export type {
 	TranscriptionOptions,
 	TranscriptionResult,
 	TranscriptionChunk,
+	ChatMessage,
+	ChatMessageRole,
+	ChatOptions,
+	ChatResult,
 } from './types';
 
 // Base class (for extending)
@@ -18,6 +22,7 @@ export { OpenAIModelProvider } from './openai-provider';
 export {
 	createModelProvider,
 	createTranscriptionProvider,
+	createPromptProvider,
 	ProviderCreationError,
 } from './model-provider-factory';
 

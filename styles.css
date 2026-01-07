@@ -181,3 +181,27 @@ If your plugin does not need CSS, delete this file.
 	min-height: 120px;
 	resize: vertical;
 }
+
+/* Prompt result modal styles */
+.prompt-response-container {
+	margin: 16px 0;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.prompt-response-content {
+	white-space: pre-wrap;
+	word-wrap: break-word;
+	padding: 12px;
+	background: var(--background-secondary);
+	border-radius: 6px;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.prompt-response-buttons {
+	display: flex;
+	gap: 8px;
+	justify-content: flex-end;
+	margin-top: 16px;
+}

@@ -26,6 +26,43 @@ export interface TranscriptionResult {
 }
 
 /**
+ * Role for chat messages
+ */
+export type ChatMessageRole = 'system' | 'user' | 'assistant';
+
+/**
+ * A single message in a chat conversation
+ */
+export interface ChatMessage {
+	role: ChatMessageRole;
+	content: string;
+}
+
+/**
+ * Options for chat completion requests
+ */
+export interface ChatOptions {
+	/** Maximum tokens to generate */
+	maxTokens?: number;
+	/** Temperature for response randomness (0-2) */
+	temperature?: number;
+}
+
+/**
+ * Result from a chat completion request
+ */
+export interface ChatResult {
+	/** The generated response content */
+	content: string;
+	/** Token usage information if available */
+	usage?: {
+		promptTokens: number;
+		completionTokens: number;
+		totalTokens: number;
+	};
+}
+
+/**
  * Configuration for creating a model provider instance
  */
 export interface ModelProviderConfig {
@@ -53,20 +90,20 @@ export interface ModelProviderConfig {
 
 /**
  * Common interface for AI model providers.
- * 
+ *
  * This interface defines the capabilities that each provider must implement,
  * allowing for polymorphic usage and dependency injection into workflows.
  */
 export interface ModelProvider {
 	/** The type of this provider */
 	readonly type: AIProviderType;
-	
+
 	/** Human-readable name for this provider instance */
 	readonly providerName: string;
 
 	/**
 	 * Transcribe an audio file to text.
-	 * 
+	 *
 	 * @param audioFilePath - Path to the audio file (mp3, wav, m4a, webm, etc.)
 	 * @param options - Transcription options (timestamps, language, etc.)
 	 * @returns Promise resolving to transcription result with text and optional chunks
@@ -76,9 +113,26 @@ export interface ModelProvider {
 
 	/**
 	 * Check if this provider supports audio transcription.
-	 * 
+	 *
 	 * @returns true if transcribeAudio() is available
 	 */
 	supportsTranscription(): boolean;
+
+	/**
+	 * Send a chat completion request.
+	 *
+	 * @param messages - Array of chat messages forming the conversation
+	 * @param options - Optional chat options (max tokens, temperature, etc.)
+	 * @returns Promise resolving to chat result with generated content
+	 * @throws Error if chat fails or is not supported by this provider
+	 */
+	sendChat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResult>;
+
+	/**
+	 * Check if this provider supports chat/conversation.
+	 *
+	 * @returns true if sendChat() is available
+	 */
+	supportsChat(): boolean;
 }
 
