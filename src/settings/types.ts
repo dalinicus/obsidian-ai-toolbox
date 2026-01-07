@@ -41,6 +41,11 @@ export interface ProviderModelSelection {
 }
 
 /**
+ * Output type options for prompt execution
+ */
+export type PromptOutputType = 'popup' | 'new-note' | 'at-cursor';
+
+/**
  * Configuration for a custom prompt
  */
 export interface PromptConfig {
@@ -48,7 +53,18 @@ export interface PromptConfig {
 	name: string;
 	promptText: string;
 	provider: ProviderModelSelection | null;
+	outputType: PromptOutputType;
 }
+
+/**
+ * Default configuration for a new prompt
+ */
+export const DEFAULT_PROMPT_CONFIG: Omit<PromptConfig, 'id'> = {
+	name: 'New prompt',
+	promptText: '',
+	provider: null,
+	outputType: 'popup'
+};
 
 export interface AIToolboxSettings {
 	impersonateBrowser: string;

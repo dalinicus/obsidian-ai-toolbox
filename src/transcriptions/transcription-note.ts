@@ -1,6 +1,7 @@
 import { App, Notice, TFile } from 'obsidian';
 import { TranscriptionResult } from '../providers';
 import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
+import { generateFilenameTimestamp } from '../utils/date-utils';
 
 /**
  * Creates a new Obsidian note with the transcription content.
@@ -83,7 +84,7 @@ export function generateNoteFilename(
 	videoMetadata?: VideoMetadata
 ): string {
 	// Add timestamp to ensure uniqueness
-	const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+	const timestamp = generateFilenameTimestamp();
 
 	// Determine title using platform handler (each platform decides how to handle metadata)
 	const handler = videoPlatformRegistry.findHandlerForUrl(sourceUrl);

@@ -2,8 +2,10 @@ import { Setting } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	PromptConfig,
+	PromptOutputType,
 	ExpandOnNextRenderState,
-	generateId
+	generateId,
+	DEFAULT_PROMPT_CONFIG
 } from "./types";
 
 /**
@@ -14,6 +16,15 @@ export interface PromptSettingsCallbacks {
 	setExpandState: (state: ExpandOnNextRenderState) => void;
 	refresh: () => void;
 }
+
+/**
+ * Output type display labels
+ */
+const OUTPUT_TYPE_OPTIONS: Record<PromptOutputType, string> = {
+	'popup': 'Show in popup',
+	'new-note': 'Create new note',
+	'at-cursor': 'Insert at cursor'
+};
 
 /**
  * Display the prompts settings tab content
@@ -33,9 +44,7 @@ export function displayPromptsSettings(
 			.onClick(async () => {
 				const newPrompt: PromptConfig = {
 					id: generateId(),
-					name: 'New prompt',
-					promptText: '',
-					provider: null
+					...DEFAULT_PROMPT_CONFIG
 				};
 				plugin.settings.prompts.push(newPrompt);
 				// Expand the newly created prompt
@@ -131,6 +140,18 @@ function displayPromptSettings(
 			textArea.inputEl.rows = 6;
 			textArea.inputEl.addClass('prompt-textarea');
 		});
+
+	// Output type selection
+	new Setting(contentContainer)
+		.setName('Output type')
+		.setDesc('Choose how to display the AI response')
+		.addDropdown(dropdown => dropdown
+			.addOptions(OUTPUT_TYPE_OPTIONS)
+			.setValue(prompt.outputType || 'popup')
+			.onChange(async (value) => {
+				prompt.outputType = value as PromptOutputType;
+				await plugin.saveSettings();
+			}));
 
 	// Clear the expand state after rendering this prompt
 	if (expandState.promptId === prompt.id) {

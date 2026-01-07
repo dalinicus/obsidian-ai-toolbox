@@ -6,13 +6,14 @@ import { displayPromptsSettings, PromptSettingsCallbacks } from "./prompts";
 import { displayTranscriptionSettings, TranscriptionSettingsCallbacks } from "./transcription";
 
 // Re-export all types and constants from types.ts for backward compatibility
-export { DEFAULT_OPENAI_ENDPOINT, generateId, DEFAULT_SETTINGS } from "./types";
+export { DEFAULT_OPENAI_ENDPOINT, generateId, DEFAULT_SETTINGS, DEFAULT_PROMPT_CONFIG } from "./types";
 export type {
 	AIProviderType,
 	AIModelConfig,
 	AIProviderConfig,
 	ProviderModelSelection,
 	PromptConfig,
+	PromptOutputType,
 	AIToolboxSettings,
 	SettingsTabType,
 	ExpandOnNextRenderState
