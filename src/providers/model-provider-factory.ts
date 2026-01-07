@@ -1,4 +1,4 @@
-import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT } from '../settings';
+import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT } from '../settings/index';
 import { ModelProvider, ModelProviderConfig } from './types';
 import { AzureOpenAIModelProvider } from './azure-openai-provider';
 import { OpenAIModelProvider } from './openai-provider';

@@ -1,5 +1,5 @@
 import { ModelProviderConfig } from './types';
-import { AIProviderType, DEFAULT_OPENAI_ENDPOINT } from '../settings';
+import { AIProviderType, DEFAULT_OPENAI_ENDPOINT } from '../settings/index';
 import { BaseProvider } from './base-model-provider';
 
 /**

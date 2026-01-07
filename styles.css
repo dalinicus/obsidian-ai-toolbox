@@ -149,3 +149,35 @@ If your plugin does not need CSS, delete this file.
 	width: 16px;
 	height: 16px;
 }
+
+/* Prompt container styles */
+.prompt-container {
+	margin-bottom: 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px;
+}
+
+.prompt-header {
+	cursor: pointer;
+	user-select: none;
+}
+
+.prompt-header:hover .setting-item-name {
+	color: var(--text-accent);
+}
+
+.prompt-content.is-collapsed {
+	display: none;
+}
+
+.prompt-content.is-expanded {
+	display: block;
+	padding-top: 8px;
+}
+
+.prompt-textarea {
+	width: 100%;
+	min-height: 120px;
+	resize: vertical;
+}

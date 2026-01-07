@@ -1,5 +1,5 @@
 import { Notice, Plugin } from 'obsidian';
-import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings";
+import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings/index";
 import { createTranscriptionProvider } from "./providers";
 import { transcribeFromClipboard } from "./transcriptions/transcription-workflow";
 
