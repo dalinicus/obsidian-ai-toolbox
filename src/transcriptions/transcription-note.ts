@@ -1,6 +1,6 @@
 import { App, Notice, TFile } from 'obsidian';
 import { TranscriptionResult } from '../providers';
-import { VideoMetadata, videoPlatformRegistry } from './video-platforms';
+import { VideoMetadata, videoPlatformRegistry } from '../processing';
 import { generateFilenameTimestamp } from '../utils/date-utils';
 
 /**

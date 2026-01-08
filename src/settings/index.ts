@@ -16,6 +16,9 @@ export type {
 	WorkflowOutputType,
 	WorkflowType,
 	PromptSourceType,
+	TranscriptionMediaType,
+	TranscriptionSourceType,
+	TranscriptionContextConfig,
 	AIToolboxSettings,
 	SettingsTabType,
 	ExpandOnNextRenderState

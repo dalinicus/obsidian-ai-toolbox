@@ -5,6 +5,8 @@ import {
 	WorkflowOutputType,
 	WorkflowType,
 	PromptSourceType,
+	TranscriptionMediaType,
+	TranscriptionSourceType,
 	ExpandOnNextRenderState,
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG
@@ -377,6 +379,45 @@ function displayTranscriptionWorkflowSettings(
 ): void {
 	// Provider selection (only models that support transcription)
 	displayTranscriptionProviderSelection(contentContainer, plugin, workflow);
+
+	// Media type dropdown
+	const mediaTypeOptions: Record<TranscriptionMediaType, string> = {
+		'video': 'Video',
+		'audio': 'Audio'
+	};
+	new Setting(contentContainer)
+		.setName('Media type')
+		.setDesc('The type of media to transcribe')
+		.addDropdown(dropdown => dropdown
+			.addOptions(mediaTypeOptions)
+			.setValue(workflow.transcriptionContext?.mediaType ?? 'video')
+			.onChange(async (value) => {
+				if (!workflow.transcriptionContext) {
+					workflow.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+				}
+				workflow.transcriptionContext.mediaType = value as TranscriptionMediaType;
+				await plugin.saveSettings();
+			}));
+
+	// Source type dropdown
+	const sourceTypeOptions: Record<TranscriptionSourceType, string> = {
+		'select-file-from-vault': 'Select file from vault',
+		'url-from-clipboard': 'URL from clipboard',
+		'url-from-selection': 'URL from selection'
+	};
+	new Setting(contentContainer)
+		.setName('Source')
+		.setDesc('Where to get the media file from')
+		.addDropdown(dropdown => dropdown
+			.addOptions(sourceTypeOptions)
+			.setValue(workflow.transcriptionContext?.sourceType ?? 'url-from-clipboard')
+			.onChange(async (value) => {
+				if (!workflow.transcriptionContext) {
+					workflow.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+				}
+				workflow.transcriptionContext.sourceType = value as TranscriptionSourceType;
+				await plugin.saveSettings();
+			}));
 
 	// Language setting
 	new Setting(contentContainer)

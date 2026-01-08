@@ -56,6 +56,24 @@ export type PromptSourceType = 'inline' | 'from-file';
 export type WorkflowType = 'chat' | 'transcription';
 
 /**
+ * Media type for transcription context
+ */
+export type TranscriptionMediaType = 'video' | 'audio';
+
+/**
+ * Source type for transcription input
+ */
+export type TranscriptionSourceType = 'select-file-from-vault' | 'url-from-clipboard' | 'url-from-selection';
+
+/**
+ * Context configuration for transcription workflows
+ */
+export interface TranscriptionContextConfig {
+	mediaType: TranscriptionMediaType;
+	sourceType: TranscriptionSourceType;
+}
+
+/**
  * Configuration for a custom workflow
  */
 export interface WorkflowConfig {
@@ -74,6 +92,7 @@ export interface WorkflowConfig {
 	// Transcription-specific settings (optional for backward compatibility)
 	language?: string;
 	includeTimestamps?: boolean;
+	transcriptionContext?: TranscriptionContextConfig;
 }
 
 /**
