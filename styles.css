@@ -53,8 +53,12 @@ If your plugin does not need CSS, delete this file.
 	user-select: none;
 }
 
-.settings-advanced-heading:hover {
+.settings-advanced-heading:hover .setting-item-name {
 	color: var(--text-accent);
+}
+
+.settings-advanced-section {
+	margin-top: 20px;
 }
 
 .settings-advanced-container {

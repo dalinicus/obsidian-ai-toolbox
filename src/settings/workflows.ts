@@ -7,6 +7,8 @@ import {
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG
 } from "./types";
+import { FolderSuggest } from "../components/folder-suggest";
+import { createCollapsibleSection } from "../components/collapsible-section";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -65,49 +67,26 @@ function displayWorkflowSettings(
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
-	const workflowContainer = containerEl.createDiv('workflow-container');
 	const expandState = callbacks.getExpandState();
-
-	// Check if this workflow should be expanded (newly added)
 	const shouldExpand = expandState.workflowId === workflow.id;
 
-	// Collapsible content container
-	const contentContainer = workflowContainer.createDiv(`workflow-content ${shouldExpand ? 'is-expanded' : 'is-collapsed'}`);
-
-	// Workflow header with collapse toggle, name and delete button
-	const headerSetting = new Setting(workflowContainer)
-		.setName(`${shouldExpand ? '▾' : '▸'} ${workflow.name || 'Unnamed workflow'}`)
-		.setHeading()
-		.addButton(button => button
-			.setIcon('trash')
-			.setTooltip('Delete workflow')
-			.onClick(async () => {
-				const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
-				if (index !== -1) {
-					plugin.settings.workflows.splice(index, 1);
-					await plugin.saveSettings();
-					callbacks.refresh();
-				}
-			}));
-
-	headerSetting.settingEl.addClass('workflow-header');
-
-	const toggleCollapse = () => {
-		const isCollapsed = contentContainer.classList.contains('is-collapsed');
-		contentContainer.classList.toggle('is-collapsed', !isCollapsed);
-		contentContainer.classList.toggle('is-expanded', isCollapsed);
-		headerSetting.setName(`${isCollapsed ? '▾' : '▸'} ${workflow.name || 'Unnamed workflow'}`);
-	};
-
-	headerSetting.settingEl.addEventListener('click', (e) => {
-		// Don't toggle if clicking on the delete button
-		if (!(e.target as HTMLElement).closest('button')) {
-			toggleCollapse();
-		}
+	const { contentContainer, updateTitle, isExpanded } = createCollapsibleSection({
+		containerEl,
+		title: workflow.name || 'Unnamed workflow',
+		containerClass: 'workflow-container',
+		contentClass: 'workflow-content',
+		headerClass: 'workflow-header',
+		startExpanded: shouldExpand,
+		isHeading: true,
+		onDelete: async () => {
+			const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
+			if (index !== -1) {
+				plugin.settings.workflows.splice(index, 1);
+				await plugin.saveSettings();
+				callbacks.refresh();
+			}
+		},
 	});
-
-	// Move content container after header
-	workflowContainer.appendChild(contentContainer);
 
 	// Workflow name
 	new Setting(contentContainer)
@@ -117,8 +96,7 @@ function displayWorkflowSettings(
 			.setValue(workflow.name)
 			.onChange(async (value) => {
 				workflow.name = value;
-				const isExpanded = contentContainer.classList.contains('is-expanded');
-				headerSetting.setName(`${isExpanded ? '▾' : '▸'} ${value || 'Unnamed workflow'}`);
+				updateTitle(value || 'Unnamed workflow');
 				await plugin.saveSettings();
 			}));
 
@@ -162,8 +140,7 @@ function displayWorkflowSettings(
 				workflow.showInCommand = value;
 				await plugin.saveSettings();
 				// Preserve expand state when refreshing
-				const isExpanded = contentContainer.classList.contains('is-expanded');
-				if (isExpanded) {
+				if (isExpanded()) {
 					callbacks.setExpandState({ workflowId: workflow.id });
 				}
 				callbacks.refresh();
@@ -181,8 +158,7 @@ function displayWorkflowSettings(
 					workflow.outputType = value as WorkflowOutputType;
 					await plugin.saveSettings();
 					// Preserve expand state when refreshing (output folder visibility may change)
-					const isExpanded = contentContainer.classList.contains('is-expanded');
-					if (isExpanded) {
+					if (isExpanded()) {
 						callbacks.setExpandState({ workflowId: workflow.id });
 					}
 					callbacks.refresh();
@@ -193,13 +169,16 @@ function displayWorkflowSettings(
 			new Setting(contentContainer)
 				.setName('Output folder')
 				.setDesc('Folder where notes will be created (leave empty to use default)')
-				.addText(text => text
-					.setPlaceholder('Default folder')
-					.setValue(workflow.outputFolder || '')
-					.onChange(async (value) => {
-						workflow.outputFolder = value;
-						await plugin.saveSettings();
-					}));
+				.addSearch(search => {
+					search
+						.setPlaceholder('Default folder')
+						.setValue(workflow.outputFolder || '')
+						.onChange(async (value) => {
+							workflow.outputFolder = value;
+							await plugin.saveSettings();
+						});
+					new FolderSuggest(plugin.app, search.inputEl);
+				});
 		}
 	}
 

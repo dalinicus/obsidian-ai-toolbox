@@ -1,5 +1,7 @@
 import { Setting } from "obsidian";
 import AIToolboxPlugin from "../main";
+import { FolderSuggest } from "../components/folder-suggest";
+import { createCollapsibleSection } from "../components/collapsible-section";
 
 /**
  * Callbacks for the transcription settings tab to communicate with the main settings tab
@@ -59,12 +61,16 @@ export function displayTranscriptionSettings(
 	new Setting(containerEl)
 		.setName('Notes folder')
 		.setDesc('Folder where transcription notes will be created (leave empty for vault root)')
-		.addText(text => text
-			.setValue(plugin.settings.outputFolder)
-			.onChange(async (value) => {
-				plugin.settings.outputFolder = value;
-				await plugin.saveSettings();
-			}));
+		.addSearch(search => {
+			search
+				.setPlaceholder('Vault root')
+				.setValue(plugin.settings.outputFolder)
+				.onChange(async (value) => {
+					plugin.settings.outputFolder = value;
+					await plugin.saveSettings();
+				});
+			new FolderSuggest(plugin.app, search.inputEl);
+		});
 
 	new Setting(containerEl)
 		.setName('Keep video file')
@@ -90,25 +96,15 @@ export function displayTranscriptionSettings(
 				}));
 	}
 
-	const advancedContainer = containerEl.createDiv('settings-advanced-container is-collapsed');
-
-	const advancedSetting = new Setting(containerEl)
-		.setName('▸ Advanced') // eslint-disable-line obsidianmd/ui/sentence-case
-		.setHeading();
-
-	advancedSetting.settingEl.addClass('settings-advanced-heading');
-
-	const toggleAdvanced = () => {
-		const isCollapsed = advancedContainer.classList.contains('is-collapsed');
-		advancedContainer.classList.toggle('is-collapsed', !isCollapsed);
-		advancedContainer.classList.toggle('is-expanded', isCollapsed);
-		advancedSetting.setName(`${isCollapsed ? '▾' : '▸'} Advanced`);
-	};
-
-	advancedSetting.settingEl.addEventListener('click', toggleAdvanced);
-
-	// Move the advancedContainer after the heading
-	containerEl.appendChild(advancedContainer);
+	const { contentContainer: advancedContainer } = createCollapsibleSection({
+		containerEl,
+		title: 'Advanced',
+		containerClass: 'settings-advanced-section',
+		contentClass: 'settings-advanced-container',
+		headerClass: 'settings-advanced-heading',
+		startExpanded: false,
+		isHeading: true,
+	});
 
 	new Setting(advancedContainer)
 		.setName('yt-dlp path') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun

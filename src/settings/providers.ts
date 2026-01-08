@@ -9,6 +9,7 @@ import {
 	DEFAULT_OPENAI_ENDPOINT
 } from "./types";
 import { createModelProvider, ModelProviderConfig } from "../providers";
+import { createCollapsibleSection } from "../components/collapsible-section";
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -275,53 +276,29 @@ function displayProviderSettings(
 	provider: AIProviderConfig,
 	callbacks: ProviderSettingsCallbacks
 ): void {
-	const providerContainer = containerEl.createDiv('provider-container');
 	const expandState = callbacks.getExpandState();
-
-	// Check if this provider should be expanded (has a newly added model)
 	const shouldExpand = expandState.providerId === provider.id;
 
-	// Collapsible content container
-	const contentContainer = providerContainer.createDiv(`provider-content ${shouldExpand ? 'is-expanded' : 'is-collapsed'}`);
-
-	// Provider header with collapse toggle, name and delete button
-	const headerSetting = new Setting(providerContainer)
-		.setName(`${shouldExpand ? '▾' : '▸'} ${provider.name || 'Unnamed provider'}`)
-		.setHeading()
-		.addButton(button => button
-			.setIcon('trash')
-			.setTooltip('Delete provider')
-			.onClick(async () => {
-				const index = plugin.settings.providers.findIndex(p => p.id === provider.id);
-				if (index !== -1) {
-					plugin.settings.providers.splice(index, 1);
-					// Clear transcription provider if it was using this provider
-					if (plugin.settings.transcriptionProvider?.providerId === provider.id) {
-						plugin.settings.transcriptionProvider = null;
-					}
-					await plugin.saveSettings();
-					callbacks.refresh();
+	const { contentContainer, updateTitle } = createCollapsibleSection({
+		containerEl,
+		title: provider.name || 'Unnamed provider',
+		containerClass: 'provider-container',
+		contentClass: 'provider-content',
+		headerClass: 'provider-header',
+		startExpanded: shouldExpand,
+		isHeading: true,
+		onDelete: async () => {
+			const index = plugin.settings.providers.findIndex(p => p.id === provider.id);
+			if (index !== -1) {
+				plugin.settings.providers.splice(index, 1);
+				if (plugin.settings.transcriptionProvider?.providerId === provider.id) {
+					plugin.settings.transcriptionProvider = null;
 				}
-			}));
-
-	headerSetting.settingEl.addClass('provider-header');
-
-	const toggleCollapse = () => {
-		const isCollapsed = contentContainer.classList.contains('is-collapsed');
-		contentContainer.classList.toggle('is-collapsed', !isCollapsed);
-		contentContainer.classList.toggle('is-expanded', isCollapsed);
-		headerSetting.setName(`${isCollapsed ? '▾' : '▸'} ${provider.name || 'Unnamed provider'}`);
-	};
-
-	headerSetting.settingEl.addEventListener('click', (e) => {
-		// Don't toggle if clicking on the delete button
-		if (!(e.target as HTMLElement).closest('button')) {
-			toggleCollapse();
-		}
+				await plugin.saveSettings();
+				callbacks.refresh();
+			}
+		},
 	});
-
-	// Move content container after header
-	providerContainer.appendChild(contentContainer);
 
 	// Provider name
 	new Setting(contentContainer)
@@ -331,8 +308,7 @@ function displayProviderSettings(
 			.setValue(provider.name)
 			.onChange(async (value) => {
 				provider.name = value;
-				const isExpanded = contentContainer.classList.contains('is-expanded');
-				headerSetting.setName(`${isExpanded ? '▾' : '▸'} ${value || 'Unnamed provider'}`);
+				updateTitle(value || 'Unnamed provider');
 				await plugin.saveSettings();
 			}));
 
@@ -422,56 +398,30 @@ function displayModelSettings(
 	model: AIModelConfig,
 	callbacks: ProviderSettingsCallbacks
 ): void {
-	const modelContainer = containerEl.createDiv('model-container');
 	const expandState = callbacks.getExpandState();
-
-	// Check if this model should be expanded (newly added)
 	const shouldExpand = expandState.modelId === model.id;
 
-	// Collapsible content container
-	const contentContainer = modelContainer.createDiv(`model-content ${shouldExpand ? 'is-expanded' : 'is-collapsed'}`);
-
-	const modelDisplayName = model.name || 'Unnamed model';
-
-	// Model header with collapse toggle and delete button
-	const headerSetting = new Setting(modelContainer)
-		.setName(`${shouldExpand ? '▾' : '▸'} ${modelDisplayName}`)
-		.addButton(button => button
-			.setIcon('trash')
-			.setTooltip('Delete model')
-			.onClick(async () => {
-				const index = provider.models.findIndex(m => m.id === model.id);
-				if (index !== -1) {
-					provider.models.splice(index, 1);
-					// Clear transcription provider if it was using this model
-					if (plugin.settings.transcriptionProvider?.modelId === model.id) {
-						plugin.settings.transcriptionProvider = null;
-					}
-					// Keep provider expanded after deletion
-					callbacks.setExpandState({ providerId: provider.id });
-					await plugin.saveSettings();
-					callbacks.refresh();
+	const { contentContainer, updateTitle } = createCollapsibleSection({
+		containerEl,
+		title: model.name || 'Unnamed model',
+		containerClass: 'model-container',
+		contentClass: 'model-content',
+		headerClass: 'model-header',
+		startExpanded: shouldExpand,
+		isHeading: false,
+		onDelete: async () => {
+			const index = provider.models.findIndex(m => m.id === model.id);
+			if (index !== -1) {
+				provider.models.splice(index, 1);
+				if (plugin.settings.transcriptionProvider?.modelId === model.id) {
+					plugin.settings.transcriptionProvider = null;
 				}
-			}));
-
-	headerSetting.settingEl.addClass('model-header');
-
-	const toggleCollapse = () => {
-		const isCollapsed = contentContainer.classList.contains('is-collapsed');
-		contentContainer.classList.toggle('is-collapsed', !isCollapsed);
-		contentContainer.classList.toggle('is-expanded', isCollapsed);
-		headerSetting.setName(`${isCollapsed ? '▾' : '▸'} ${model.name || 'Unnamed model'}`);
-	};
-
-	headerSetting.settingEl.addEventListener('click', (e) => {
-		// Don't toggle if clicking on the delete button
-		if (!(e.target as HTMLElement).closest('button')) {
-			toggleCollapse();
-		}
+				callbacks.setExpandState({ providerId: provider.id });
+				await plugin.saveSettings();
+				callbacks.refresh();
+			}
+		},
 	});
-
-	// Move content container after header
-	modelContainer.appendChild(contentContainer);
 
 	// Model name
 	new Setting(contentContainer)
@@ -481,8 +431,7 @@ function displayModelSettings(
 			.setValue(model.name)
 			.onChange(async (value) => {
 				model.name = value;
-				const isCollapsed = contentContainer.classList.contains('is-collapsed');
-				headerSetting.setName(`${isCollapsed ? '▸' : '▾'} ${value || 'Unnamed model'}`);
+				updateTitle(value || 'Unnamed model');
 				await plugin.saveSettings();
 			}));
 
