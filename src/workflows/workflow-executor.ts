@@ -77,7 +77,8 @@ async function createNoteWithResult(
 	app: App,
 	workflowName: string,
 	promptText: string,
-	response: string
+	response: string,
+	outputFolder?: string
 ): Promise<void> {
 	const timestamp = generateFilenameTimestamp();
 	const noteTitle = `${workflowName} - ${timestamp}`;
@@ -97,17 +98,25 @@ ${response}
 *Generated on ${new Date().toLocaleString()}*
 `;
 
-	// Get the default new note location from Obsidian's vault config
-	// This method exists but is not in the public type definitions
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const vault = app.vault as any;
-	const newFileFolderPath = vault.getConfig?.('newFileFolderPath') as string | undefined;
+	// Determine folder path: use workflow-specific folder if set, otherwise fall back to Obsidian's default
+	let folderPath: string | undefined;
+	if (outputFolder && outputFolder.trim() !== '') {
+		folderPath = outputFolder.trim().replace(/\/$/, '');
+	} else {
+		// Get the default new note location from Obsidian's vault config
+		// This method exists but is not in the public type definitions
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const vault = app.vault as any;
+		const newFileFolderPath = vault.getConfig?.('newFileFolderPath') as string | undefined;
+		if (newFileFolderPath && newFileFolderPath.trim() !== '') {
+			folderPath = newFileFolderPath.replace(/\/$/, '');
+		}
+	}
 
 	// Build the file path
 	let filePath: string;
-	if (newFileFolderPath && newFileFolderPath.trim() !== '') {
+	if (folderPath) {
 		// Ensure folder exists
-		const folderPath = newFileFolderPath.replace(/\/$/, '');
 		const folder = app.vault.getAbstractFileByPath(folderPath);
 		if (!folder) {
 			await app.vault.createFolder(folderPath);
@@ -188,7 +197,7 @@ export async function executeWorkflow(
 		const outputType = workflow.outputType || 'popup';
 
 		if (outputType === 'new-note') {
-			await createNoteWithResult(app, workflow.name, workflow.promptText, result.content);
+			await createNoteWithResult(app, workflow.name, workflow.promptText, result.content, workflow.outputFolder);
 		} else if (outputType === 'at-cursor') {
 			insertAtCursor(app, result.content);
 		} else {

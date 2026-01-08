@@ -30,14 +30,14 @@ export default class AIToolboxPlugin extends Plugin {
 	 * Show the workflow suggester modal and execute the selected workflow.
 	 */
 	private showWorkflowSuggester(): void {
-		const workflows = this.settings.workflows;
+		const availableWorkflows = this.settings.workflows.filter(w => w.showInCommand);
 
-		if (workflows.length === 0) {
-			new Notice('No workflows configured. Please add workflows in settings.');
+		if (availableWorkflows.length === 0) {
+			new Notice('No workflows available. You can configure workloads from the "Workflows" tab in settings.');
 			return;
 		}
 
-		const modal = new WorkflowSuggesterModal(this.app, workflows, (workflow) => {
+		const modal = new WorkflowSuggesterModal(this.app, availableWorkflows, (workflow) => {
 			void executeWorkflow(this.app, this.settings, workflow);
 		});
 		modal.open();

@@ -141,6 +141,17 @@ function displayWorkflowSettings(
 			textArea.inputEl.addClass('workflow-textarea');
 		});
 
+	// Make available as input to other workflows toggle
+	new Setting(contentContainer)
+		.setName('Make available as input to other workflows')
+		.setDesc('Allow this workflow to be used as input context for other workflows')
+		.addToggle(toggle => toggle
+			.setValue(workflow.availableAsInput ?? false)
+			.onChange(async (value) => {
+				workflow.availableAsInput = value;
+				await plugin.saveSettings();
+			}));
+
 	// List in Workload Command toggle
 	new Setting(contentContainer)
 		.setName('List in "Run AI Workflow" Command')
@@ -169,19 +180,28 @@ function displayWorkflowSettings(
 				.onChange(async (value) => {
 					workflow.outputType = value as WorkflowOutputType;
 					await plugin.saveSettings();
+					// Preserve expand state when refreshing (output folder visibility may change)
+					const isExpanded = contentContainer.classList.contains('is-expanded');
+					if (isExpanded) {
+						callbacks.setExpandState({ workflowId: workflow.id });
+					}
+					callbacks.refresh();
 				}));
-	}
 
-	// Make available as input to other workflows toggle
-	new Setting(contentContainer)
-		.setName('Make available as input to other workflows')
-		.setDesc('Allow this workflow to be used as input context for other workflows')
-		.addToggle(toggle => toggle
-			.setValue(workflow.availableAsInput ?? false)
-			.onChange(async (value) => {
-				workflow.availableAsInput = value;
-				await plugin.saveSettings();
-			}));
+		// Output folder (only show if output type is new-note)
+		if (workflow.outputType === 'new-note') {
+			new Setting(contentContainer)
+				.setName('Output folder')
+				.setDesc('Folder where notes will be created (leave empty to use default)')
+				.addText(text => text
+					.setPlaceholder('Default folder')
+					.setValue(workflow.outputFolder || '')
+					.onChange(async (value) => {
+						workflow.outputFolder = value;
+						await plugin.saveSettings();
+					}));
+		}
+	}
 
 	// Clear the expand state after rendering this workflow
 	if (expandState.workflowId === workflow.id) {
