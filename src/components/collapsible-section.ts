@@ -1,4 +1,4 @@
-import { Setting } from "obsidian";
+import { Setting, setIcon } from "obsidian";
 
 /**
  * Configuration options for creating a collapsible section
@@ -18,6 +18,8 @@ export interface CollapsibleSectionConfig {
 	startExpanded: boolean;
 	/** Whether to show as a heading (bold) - defaults to true */
 	isHeading?: boolean;
+	/** Optional icon to display before the title */
+	icon?: string;
 	/** Callback when the delete button is clicked (if provided, delete button is shown) */
 	onDelete?: () => void;
 	/** Callback when the title changes (for dynamic name updates) */
@@ -53,6 +55,7 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		headerClass,
 		startExpanded,
 		isHeading = true,
+		icon,
 		onDelete,
 	} = config;
 
@@ -65,9 +68,11 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 
 	// Track current title for updates
 	let currentTitle = title;
+	let iconElement: HTMLElement | null = null;
 
-	// Helper to get the formatted title with arrow
+	// Helper to get the formatted title with arrow and optional icon
 	const getFormattedTitle = (name: string, expanded: boolean): string => {
+		// Arrow only, icon will be inserted separately
 		return `${expanded ? '▾' : '▸'} ${name || 'Unnamed'}`;
 	};
 
@@ -77,6 +82,13 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 
 	if (isHeading) {
 		headerSetting.setHeading();
+	}
+
+	// Add icon if provided (at the end, after title text)
+	if (icon) {
+		iconElement = headerSetting.nameEl.createSpan({ cls: 'workflow-header-icon' });
+		setIcon(iconElement, icon);
+		headerSetting.nameEl.appendChild(iconElement);
 	}
 
 	// Add delete button if callback provided
@@ -95,6 +107,11 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		contentContainer.classList.toggle('is-collapsed', !isCollapsed);
 		contentContainer.classList.toggle('is-expanded', isCollapsed);
 		headerSetting.setName(getFormattedTitle(currentTitle, isCollapsed));
+
+		// Re-add icon at the end
+		if (icon && iconElement) {
+			headerSetting.nameEl.appendChild(iconElement);
+		}
 	};
 
 	// Add click handler to header (excluding buttons)
@@ -112,6 +129,11 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		currentTitle = newTitle;
 		const isExpanded = contentContainer.classList.contains('is-expanded');
 		headerSetting.setName(getFormattedTitle(newTitle, isExpanded));
+
+		// Re-add icon at the end
+		if (icon && iconElement) {
+			headerSetting.nameEl.appendChild(iconElement);
+		}
 	};
 
 	// Check if expanded

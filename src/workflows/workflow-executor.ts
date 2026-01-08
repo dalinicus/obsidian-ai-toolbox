@@ -1,7 +1,9 @@
-import { App, MarkdownView, Modal, Notice, TFile } from 'obsidian';
+import { App, MarkdownView, Modal, Notice, TFile, FuzzySuggestModal } from 'obsidian';
 import { WorkflowConfig, AIToolboxSettings } from '../settings';
-import { createWorkflowProvider, ChatMessage } from '../providers';
+import { createWorkflowProvider, ChatMessage, TranscriptionOptions } from '../providers';
 import { generateFilenameTimestamp } from '../utils/date-utils';
+import { createTranscriptionNote } from '../transcriptions/transcription-note';
+import * as path from 'path';
 
 /**
  * Modal to display the AI response from a workflow execution
@@ -179,12 +181,30 @@ async function getPromptText(app: App, workflow: WorkflowConfig): Promise<string
 
 /**
  * Execute a workflow using its configured provider and display the result.
+ * Routes to the appropriate execution function based on workflow type.
  *
  * @param app - Obsidian App instance
  * @param settings - Plugin settings
  * @param workflow - The workflow configuration to execute
  */
 export async function executeWorkflow(
+	app: App,
+	settings: AIToolboxSettings,
+	workflow: WorkflowConfig
+): Promise<void> {
+	const workflowType = workflow.type || 'chat';
+
+	if (workflowType === 'transcription') {
+		await executeTranscriptionWorkflow(app, settings, workflow);
+	} else {
+		await executeChatWorkflow(app, settings, workflow);
+	}
+}
+
+/**
+ * Execute a chat workflow.
+ */
+async function executeChatWorkflow(
 	app: App,
 	settings: AIToolboxSettings,
 	workflow: WorkflowConfig
@@ -249,5 +269,115 @@ export async function executeWorkflow(
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		new Notice(`Failed to execute workflow: ${errorMessage}`);
 	}
+}
+
+/**
+ * Modal for selecting an audio file from the vault
+ */
+class AudioFileSelectorModal extends FuzzySuggestModal<TFile> {
+	private audioFiles: TFile[];
+	private onSelect: (file: TFile) => void;
+
+	constructor(app: App, onSelect: (file: TFile) => void) {
+		super(app);
+		this.onSelect = onSelect;
+
+		// Get all audio files from the vault
+		const supportedExtensions = ['mp3', 'wav', 'm4a', 'webm', 'ogg', 'flac', 'aac'];
+		this.audioFiles = app.vault.getFiles().filter(file => {
+			const ext = file.extension.toLowerCase();
+			return supportedExtensions.includes(ext);
+		});
+
+		this.setPlaceholder('Select an audio file to transcribe...');
+	}
+
+	getItems(): TFile[] {
+		return this.audioFiles;
+	}
+
+	getItemText(file: TFile): string {
+		return file.path;
+	}
+
+	onChooseItem(file: TFile): void {
+		this.onSelect(file);
+	}
+}
+
+/**
+ * Execute a transcription workflow.
+ */
+async function executeTranscriptionWorkflow(
+	app: App,
+	settings: AIToolboxSettings,
+	workflow: WorkflowConfig
+): Promise<void> {
+	// Validate workflow has a provider configured
+	if (!workflow.provider) {
+		new Notice(`Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
+		return;
+	}
+
+	// Create the provider
+	const provider = createWorkflowProvider(settings, workflow);
+	if (!provider) {
+		new Notice(`Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
+		return;
+	}
+
+	// Validate provider supports transcription
+	if (!provider.supportsTranscription()) {
+		new Notice(`The provider for workflow "${workflow.name}" does not support transcription. Please select a transcription-capable model.`);
+		return;
+	}
+
+	// Show file selector modal
+	const modal = new AudioFileSelectorModal(app, async (audioFile: TFile) => {
+		try {
+			new Notice(`Transcribing ${audioFile.name}...`);
+
+			// Get the absolute path to the audio file
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const adapter = app.vault.adapter as any;
+			const audioFilePath = path.join(adapter.basePath, audioFile.path);
+
+			// Build transcription options from workflow settings
+			const transcriptionOptions: TranscriptionOptions = {
+				includeTimestamps: workflow.includeTimestamps ?? true,
+				language: workflow.language || undefined
+			};
+
+			// Transcribe the audio
+			const transcriptionResult = await provider.transcribeAudio(audioFilePath, transcriptionOptions);
+
+			// Handle output based on configured output type
+			const outputType = workflow.outputType || 'new-note';
+
+			if (outputType === 'new-note') {
+				// Create a transcription note
+				await createTranscriptionNote(
+					app,
+					transcriptionResult,
+					audioFile.path,
+					workflow.includeTimestamps ?? true,
+					workflow.outputFolder || ''
+				);
+			} else if (outputType === 'at-cursor') {
+				insertAtCursor(app, transcriptionResult.text);
+			} else {
+				// Show in popup modal
+				const resultModal = new WorkflowResultModal(app, workflow.name, transcriptionResult.text);
+				resultModal.open();
+			}
+
+		} catch (error) {
+			console.error('Transcription workflow execution error:', error);
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			new Notice(`Failed to transcribe audio: ${errorMessage}`);
+		}
+	});
+
+	modal.open();
 }
 

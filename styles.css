@@ -236,3 +236,83 @@ button.mod-success:hover {
 .path-picker-file-input {
 	min-width: 140px;
 }
+
+/* Workflow type modal styles */
+.workflow-type-modal .modal-content {
+	padding: 20px;
+}
+
+.workflow-type-description {
+	color: var(--text-muted);
+	margin-bottom: 20px;
+}
+
+.workflow-type-options {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.workflow-type-option {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding: 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.workflow-type-option:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--text-accent);
+}
+
+.workflow-type-icon {
+	flex-shrink: 0;
+	width: 48px;
+	height: 48px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background: var(--background-secondary);
+	border-radius: 8px;
+}
+
+.workflow-type-icon svg {
+	width: 28px;
+	height: 28px;
+	color: var(--text-accent);
+}
+
+.workflow-type-content {
+	flex: 1;
+}
+
+.workflow-type-content h3 {
+	margin: 0 0 4px 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.workflow-type-content p {
+	margin: 0;
+	font-size: 13px;
+	color: var(--text-muted);
+}
+
+/* Workflow type icon in header */
+.workflow-header-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: 6px;
+	vertical-align: center;
+}
+
+.workflow-header-icon svg {
+	width: 15px;
+	height: 15px;
+	stroke-width: 2;
+}

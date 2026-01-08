@@ -14,6 +14,7 @@ export type {
 	ProviderModelSelection,
 	WorkflowConfig,
 	WorkflowOutputType,
+	WorkflowType,
 	PromptSourceType,
 	AIToolboxSettings,
 	SettingsTabType,

@@ -51,11 +51,17 @@ export type WorkflowOutputType = 'popup' | 'new-note' | 'at-cursor';
 export type PromptSourceType = 'inline' | 'from-file';
 
 /**
+ * Workflow type options
+ */
+export type WorkflowType = 'chat' | 'transcription';
+
+/**
  * Configuration for a custom workflow
  */
 export interface WorkflowConfig {
 	id: string;
 	name: string;
+	type: WorkflowType;
 	promptText: string;
 	promptSourceType: PromptSourceType;
 	promptFolderPath: string;
@@ -65,6 +71,9 @@ export interface WorkflowConfig {
 	outputFolder: string;
 	showInCommand: boolean;
 	availableAsInput: boolean;
+	// Transcription-specific settings (optional for backward compatibility)
+	language?: string;
+	includeTimestamps?: boolean;
 }
 
 /**
@@ -72,6 +81,7 @@ export interface WorkflowConfig {
  */
 export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	name: 'New workflow',
+	type: 'chat',
 	promptText: '',
 	promptSourceType: 'inline',
 	promptFolderPath: '',
@@ -80,7 +90,9 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	outputType: 'popup',
 	outputFolder: '',
 	showInCommand: true,
-	availableAsInput: false
+	availableAsInput: false,
+	language: '',
+	includeTimestamps: true
 };
 
 export interface AIToolboxSettings {

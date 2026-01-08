@@ -3,6 +3,7 @@ import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
 	WorkflowOutputType,
+	WorkflowType,
 	PromptSourceType,
 	ExpandOnNextRenderState,
 	generateId,
@@ -10,6 +11,7 @@ import {
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
+import { WorkflowTypeModal } from "../components/workflow-type-modal";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -52,16 +54,21 @@ export function displayWorkflowsSettings(
 		.addButton(button => button
 			.setButtonText('Add workflow')
 			.setCta()
-			.onClick(async () => {
-				const newWorkflow: WorkflowConfig = {
-					id: generateId(),
-					...DEFAULT_WORKFLOW_CONFIG
-				};
-				plugin.settings.workflows.push(newWorkflow);
-				// Expand the newly created workflow
-				callbacks.setExpandState({ workflowId: newWorkflow.id });
-				await plugin.saveSettings();
-				callbacks.refresh();
+			.onClick(() => {
+				// Show modal to select workflow type
+				const modal = new WorkflowTypeModal(plugin.app, async (type: WorkflowType) => {
+					const newWorkflow: WorkflowConfig = {
+						id: generateId(),
+						...DEFAULT_WORKFLOW_CONFIG,
+						type
+					};
+					plugin.settings.workflows.push(newWorkflow);
+					// Expand the newly created workflow
+					callbacks.setExpandState({ workflowId: newWorkflow.id });
+					await plugin.saveSettings();
+					callbacks.refresh();
+				});
+				modal.open();
 			}));
 
 	// Display each workflow
@@ -79,6 +86,10 @@ function displayWorkflowSettings(
 	const expandState = callbacks.getExpandState();
 	const shouldExpand = expandState.workflowId === workflow.id;
 
+	// Determine icon based on workflow type (default to 'chat' for backward compatibility)
+	const workflowType = workflow.type || 'chat';
+	const icon = workflowType === 'chat' ? 'message-circle' : 'audio-lines';
+
 	const { contentContainer, updateTitle, isExpanded } = createCollapsibleSection({
 		containerEl,
 		title: workflow.name || 'Unnamed workflow',
@@ -87,6 +98,7 @@ function displayWorkflowSettings(
 		headerClass: 'workflow-header',
 		startExpanded: shouldExpand,
 		isHeading: true,
+		icon,
 		onDelete: async () => {
 			const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
 			if (index !== -1) {
@@ -97,7 +109,7 @@ function displayWorkflowSettings(
 		},
 	});
 
-	// Workflow name
+	// Workflow name (common to all workflow types)
 	new Setting(contentContainer)
 		.setName('Name')
 		.setDesc('Display name for this workflow')
@@ -109,6 +121,30 @@ function displayWorkflowSettings(
 				await plugin.saveSettings();
 			}));
 
+	// Route to type-specific settings
+	if (workflowType === 'transcription') {
+		displayTranscriptionWorkflowSettings(contentContainer, plugin, workflow, callbacks, isExpanded);
+	} else {
+		// Default to chat workflow settings for backward compatibility
+		displayChatWorkflowSettings(contentContainer, plugin, workflow, callbacks, isExpanded);
+	}
+
+	// Clear the expand state after rendering this workflow
+	if (expandState.workflowId === workflow.id) {
+		callbacks.setExpandState({});
+	}
+}
+
+/**
+ * Display chat-specific workflow settings
+ */
+function displayChatWorkflowSettings(
+	contentContainer: HTMLElement,
+	plugin: AIToolboxPlugin,
+	workflow: WorkflowConfig,
+	callbacks: WorkflowSettingsCallbacks,
+	isExpanded: () => boolean
+): void {
 	// Provider/Model selection (only models that support chat)
 	displayWorkflowProviderSelection(contentContainer, plugin, workflow);
 
@@ -233,11 +269,6 @@ function displayWorkflowSettings(
 			});
 		}
 	}
-
-	// Clear the expand state after rendering this workflow
-	if (expandState.workflowId === workflow.id) {
-		callbacks.setExpandState({});
-	}
 }
 
 function displayWorkflowProviderSelection(
@@ -283,5 +314,154 @@ function displayWorkflowProviderSelection(
 				}
 				await plugin.saveSettings();
 			}));
+}
+
+/**
+ * Display provider selection for transcription workflows
+ * Only shows models that support transcription
+ */
+function displayTranscriptionProviderSelection(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	workflow: WorkflowConfig
+): void {
+	const providers = plugin.settings.providers;
+	const currentSelection = workflow.provider;
+
+	// Build options for provider/model dropdown (only models that support transcription)
+	const options: Record<string, string> = { '': 'Select a provider and model' };
+	for (const provider of providers) {
+		for (const model of provider.models) {
+			if (model.supportsTranscription) {
+				const key = `${provider.id}:${model.id}`;
+				options[key] = `${provider.name} - ${model.name}`;
+			}
+		}
+	}
+
+	const currentValue = currentSelection
+		? `${currentSelection.providerId}:${currentSelection.modelId}`
+		: '';
+
+	new Setting(containerEl)
+		.setName('Provider')
+		.setDesc('Select the provider and model to use for transcription')
+		.addDropdown(dropdown => dropdown
+			.addOptions(options)
+			.setValue(currentValue)
+			.onChange(async (value) => {
+				if (value === '') {
+					workflow.provider = null;
+				} else {
+					const parts = value.split(':');
+					if (parts.length === 2 && parts[0] && parts[1]) {
+						workflow.provider = {
+							providerId: parts[0],
+							modelId: parts[1]
+						};
+					}
+				}
+				await plugin.saveSettings();
+			}));
+}
+
+/**
+ * Display transcription-specific workflow settings
+ */
+function displayTranscriptionWorkflowSettings(
+	contentContainer: HTMLElement,
+	plugin: AIToolboxPlugin,
+	workflow: WorkflowConfig,
+	callbacks: WorkflowSettingsCallbacks,
+	isExpanded: () => boolean
+): void {
+	// Provider selection (only models that support transcription)
+	displayTranscriptionProviderSelection(contentContainer, plugin, workflow);
+
+	// Language setting
+	new Setting(contentContainer)
+		.setName('Language')
+		.setDesc('Optional language code for transcription (e.g., "en", "es", "fr"). Leave empty for auto-detection.')
+		.addText(text => text
+			.setPlaceholder('Auto-detect')
+			.setValue(workflow.language || '')
+			.onChange(async (value) => {
+				workflow.language = value;
+				await plugin.saveSettings();
+			}));
+
+	// Include timestamps toggle
+	new Setting(contentContainer)
+		.setName('Include timestamps')
+		.setDesc('Include timestamps in the transcription output')
+		.addToggle(toggle => toggle
+			.setValue(workflow.includeTimestamps ?? true)
+			.onChange(async (value) => {
+				workflow.includeTimestamps = value;
+				await plugin.saveSettings();
+			}));
+
+	// Make available as input to other workflows toggle
+	new Setting(contentContainer)
+		.setName('Make available as input to other workflows')
+		.setDesc('Allow this workflow to be used as input context for other workflows')
+		.addToggle(toggle => toggle
+			.setValue(workflow.availableAsInput ?? false)
+			.onChange(async (value) => {
+				workflow.availableAsInput = value;
+				await plugin.saveSettings();
+			}));
+
+	// List in Workflow Command toggle
+	new Setting(contentContainer)
+		.setName('List in "Run AI Workflow" Command')
+		.setDesc('Show this workflow in the list when running the "Run AI Workflow" command')
+		.addToggle(toggle => toggle
+			.setValue(workflow.showInCommand ?? true)
+			.onChange(async (value) => {
+				workflow.showInCommand = value;
+				await plugin.saveSettings();
+				// Preserve expand state when refreshing
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
+			}));
+
+	// Output type selection (only show if workflow is listed in command)
+	if (workflow.showInCommand ?? true) {
+		new Setting(contentContainer)
+			.setName('Output type')
+			.setDesc('Choose how to display the transcription result')
+			.addDropdown(dropdown => dropdown
+				.addOptions(OUTPUT_TYPE_OPTIONS)
+				.setValue(workflow.outputType || 'new-note')
+				.onChange(async (value) => {
+					workflow.outputType = value as WorkflowOutputType;
+					await plugin.saveSettings();
+					// Preserve expand state when refreshing (output folder visibility may change)
+					if (isExpanded()) {
+						callbacks.setExpandState({ workflowId: workflow.id });
+					}
+					callbacks.refresh();
+				}));
+
+		// Output folder (only show if output type is new-note)
+		if (workflow.outputType === 'new-note') {
+			createPathPicker({
+				mode: 'folder-only',
+				containerEl: contentContainer,
+				app: plugin.app,
+				name: 'Output folder',
+				description: 'Folder where transcription notes will be created (leave empty to use default)',
+				folderPlaceholder: 'Default folder',
+				initialFolderPath: workflow.outputFolder || '',
+				onFolderChange: async (folderPath: string) => {
+					workflow.outputFolder = folderPath;
+					await plugin.saveSettings();
+				}
+			});
+		}
+	}
 }
 
