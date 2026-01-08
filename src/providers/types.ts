@@ -26,6 +26,14 @@ export interface TranscriptionResult {
 }
 
 /**
+ * Test audio data for transcription testing
+ */
+export interface TestAudioData {
+	audioBuffer: Buffer;
+	fileName: string;
+}
+
+/**
  * Role for chat messages
  */
 export type ChatMessageRole = 'system' | 'user' | 'assistant';
@@ -110,6 +118,16 @@ export interface ModelProvider {
 	 * @throws Error if transcription fails or is not supported by this provider
 	 */
 	transcribeAudio(audioFilePath: string, options?: TranscriptionOptions): Promise<TranscriptionResult>;
+
+	/**
+	 * Transcribe audio using a raw audio buffer.
+	 * Useful for testing without writing to disk.
+	 *
+	 * @param testAudio - Audio buffer and filename
+	 * @returns Promise resolving to the transcription text
+	 * @throws Error if transcription fails or is not supported by this provider
+	 */
+	transcribeAudioBuffer(testAudio: TestAudioData): Promise<string>;
 
 	/**
 	 * Check if this provider supports audio transcription.

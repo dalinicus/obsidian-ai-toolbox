@@ -1,6 +1,6 @@
 import { ModelProviderConfig, ChatMessage, ChatOptions } from './types';
 import { AIProviderType } from '../settings';
-import { BaseProvider } from './base-model-provider';
+import { BaseProvider } from './base-provider';
 
 /**
  * Azure OpenAI model provider implementation.

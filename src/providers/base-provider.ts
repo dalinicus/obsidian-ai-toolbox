@@ -1,16 +1,7 @@
 import { Notice, requestUrl } from 'obsidian';
-import * as fs from 'fs';
-import { Buffer } from 'buffer';
-import { ModelProvider, ModelProviderConfig, TranscriptionOptions, TranscriptionResult, ChatMessage, ChatOptions, ChatResult } from './types';
+import { ModelProvider, ModelProviderConfig, TranscriptionOptions, TranscriptionResult, ChatMessage, ChatOptions, ChatResult, TestAudioData } from './types';
 import { AIProviderType } from '../settings';
-
-/**
- * Interface for transcription API response
- */
-export interface TranscriptionApiResponse {
-	text: string;
-	segments?: Array<{ text: string; start: number; end: number }>;
-}
+import { prepareAudioFormData, TranscriptionApiResponse, FormField, buildMultipartFormData, generateFormBoundary } from '../processing/audio-processor';
 
 /**
  * Abstract base class for AI model providers.
@@ -102,43 +93,19 @@ export abstract class BaseProvider implements ModelProvider {
 	}
 
 	async transcribeAudio(audioFilePath: string, options: TranscriptionOptions = {}): Promise<TranscriptionResult> {
-		if (!fs.existsSync(audioFilePath)) {
-			throw new Error(`Audio file not found: ${audioFilePath}`);
-		}
-
 		this.validateTranscriptionConfig();
 
 		try {
 			new Notice(`Transcribing audio with ${this.getProviderDisplayName()}`);
 
-			const audioBuffer = fs.readFileSync(audioFilePath);
-			const fileName = audioFilePath.split(/[/\\]/).pop() || 'audio.mp3';
-			const apiUrl = this.buildTranscriptionUrl();
-
-			const boundary = '----FormBoundary' + Math.random().toString(36).substring(2);
-			const formData = this.buildMultipartFormData(
-				boundary,
-				audioBuffer,
-				fileName,
-				options.includeTimestamps || false,
-				options.language
-			);
-
-			const response = await requestUrl({
-				url: apiUrl,
-				method: 'POST',
-				headers: {
-					...this.getAuthHeaders(),
-					'Content-Type': `multipart/form-data; boundary=${boundary}`,
-				},
-				body: formData,
+			const { boundary, formData } = prepareAudioFormData({
+				audioFilePath,
+				includeTimestamps: options.includeTimestamps || false,
+				language: options.language,
+				additionalFields: this.getAdditionalFormFields(),
 			});
 
-			if (response.status !== 200) {
-				throw new Error(`${this.getProviderDisplayName()} API error: ${response.status} - ${response.text}`);
-			}
-
-			const result = response.json as TranscriptionApiResponse;
+			const result = await this.sendTranscriptionRequest(boundary, formData);
 			new Notice('Transcription complete!');
 
 			return this.parseTranscriptionResponse(result, audioFilePath, options.includeTimestamps || false);
@@ -148,6 +115,41 @@ export abstract class BaseProvider implements ModelProvider {
 			new Notice(`Transcription failed: ${errorMessage}`);
 			throw error;
 		}
+	}
+
+	async transcribeAudioBuffer(testAudio: TestAudioData): Promise<string> {
+		this.validateTranscriptionConfig();
+
+		const boundary = generateFormBoundary();
+		const formData = buildMultipartFormData({
+			boundary,
+			audioBuffer: testAudio.audioBuffer,
+			fileName: testAudio.fileName,
+			includeTimestamps: false,
+			additionalFields: this.getAdditionalFormFields(),
+		});
+
+		const result = await this.sendTranscriptionRequest(boundary, formData);
+		return result.text;
+	}
+
+	private async sendTranscriptionRequest(boundary: string, formData: ArrayBuffer): Promise<TranscriptionApiResponse> {
+		const apiUrl = this.buildTranscriptionUrl();
+		const response = await requestUrl({
+			url: apiUrl,
+			method: 'POST',
+			headers: {
+				...this.getAuthHeaders(),
+				'Content-Type': `multipart/form-data; boundary=${boundary}`,
+			},
+			body: formData,
+		});
+
+		if (response.status !== 200) {
+			throw new Error(`${this.getProviderDisplayName()} API error: ${response.status} - ${response.text}`);
+		}
+
+		return response.json as TranscriptionApiResponse;
 	}
 
 	/**
@@ -190,7 +192,7 @@ export abstract class BaseProvider implements ModelProvider {
 	/**
 	 * Get additional form fields for the multipart request (e.g., model field for OpenAI)
 	 */
-	protected getAdditionalFormFields(): Array<{ name: string; value: string }> {
+	protected getAdditionalFormFields(): FormField[] {
 		return [];
 	}
 
@@ -216,74 +218,6 @@ export abstract class BaseProvider implements ModelProvider {
 		}
 
 		return result;
-	}
-
-	protected buildMultipartFormData(
-		boundary: string,
-		audioBuffer: Buffer,
-		fileName: string,
-		includeTimestamps: boolean,
-		language?: string
-	): ArrayBuffer {
-		const parts: (string | Buffer)[] = [];
-
-		// File field
-		parts.push(`--${boundary}\r\n`);
-		parts.push(`Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n`);
-		parts.push(`Content-Type: application/octet-stream\r\n\r\n`);
-		parts.push(audioBuffer);
-		parts.push('\r\n');
-
-		// Additional provider-specific fields (e.g., model for OpenAI)
-		for (const field of this.getAdditionalFormFields()) {
-			parts.push(`--${boundary}\r\n`);
-			parts.push(`Content-Disposition: form-data; name="${field.name}"\r\n\r\n`);
-			parts.push(`${field.value}\r\n`);
-		}
-
-		// Response format
-		const responseFormat = includeTimestamps ? 'verbose_json' : 'json';
-		parts.push(`--${boundary}\r\n`);
-		parts.push(`Content-Disposition: form-data; name="response_format"\r\n\r\n`);
-		parts.push(`${responseFormat}\r\n`);
-
-		// Language (optional)
-		if (language) {
-			parts.push(`--${boundary}\r\n`);
-			parts.push(`Content-Disposition: form-data; name="language"\r\n\r\n`);
-			parts.push(`${language}\r\n`);
-		}
-
-		// Timestamp granularities (for verbose_json)
-		if (includeTimestamps) {
-			parts.push(`--${boundary}\r\n`);
-			parts.push(`Content-Disposition: form-data; name="timestamp_granularities[]"\r\n\r\n`);
-			parts.push(`segment\r\n`);
-		}
-
-		parts.push(`--${boundary}--\r\n`);
-
-		return this.combinePartsToArrayBuffer(parts);
-	}
-
-	private combinePartsToArrayBuffer(parts: (string | Buffer)[]): ArrayBuffer {
-		const encoder = new TextEncoder();
-		const buffers: Uint8Array[] = parts.map(part => {
-			if (typeof part === 'string') {
-				return encoder.encode(part);
-			}
-			return new Uint8Array(part.buffer, part.byteOffset, part.byteLength);
-		});
-
-		const totalLength = buffers.reduce((sum, buf) => sum + buf.byteLength, 0);
-		const combined = new Uint8Array(totalLength);
-		let offset = 0;
-		for (const buf of buffers) {
-			combined.set(new Uint8Array(buf), offset);
-			offset += buf.byteLength;
-		}
-
-		return combined.buffer;
 	}
 
 	protected parseTranscriptionResponse(

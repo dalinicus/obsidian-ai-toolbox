@@ -199,13 +199,21 @@ export function prepareAudioFormData(options: PrepareAudioFormDataOptions): Prep
 }
 
 /**
- * Creates multipart form data with a generated test audio for API testing.
- * Generates a 1-second WAV file at 16kHz mono with a simple tone pattern
- * that simulates speech-like sound, directly as form data without writing to disk.
- *
- * @returns Object containing the boundary and prepared form data
+ * Result from creating test audio data
  */
-export function createTestAudioFormData(): PreparedAudioFormData {
+export interface TestAudioData {
+    audioBuffer: Buffer;
+    fileName: string;
+}
+
+/**
+ * Creates a test audio buffer for API testing.
+ * Generates a 1-second WAV file at 16kHz mono with a simple tone pattern
+ * that simulates speech-like sound.
+ *
+ * @returns Object containing the audio buffer and filename
+ */
+export function createTestAudioBuffer(): TestAudioData {
     const sampleRate = 16000;
     const duration = 1;
     const numSamples = sampleRate * duration;
@@ -255,14 +263,5 @@ export function createTestAudioFormData(): PreparedAudioFormData {
         offset += 2;
     }
 
-    const fileName = 'test-audio.wav';
-    const boundary = generateFormBoundary();
-    const formData = buildMultipartFormData({
-        boundary,
-        audioBuffer,
-        fileName,
-        includeTimestamps: false,
-    });
-
-    return { boundary, formData, fileName };
+    return { audioBuffer, fileName: 'test-audio.wav' };
 }

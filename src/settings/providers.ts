@@ -10,9 +10,7 @@ import {
 } from "./types";
 import { createModelProvider, ModelProviderConfig } from "../providers";
 import { createCollapsibleSection } from "../components/collapsible-section";
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import { createTestAudioBuffer } from "../processing/audio-processor";
 
 /**
  * Callbacks for the provider settings tab to communicate with the main settings tab
@@ -27,84 +25,6 @@ export interface ProviderSettingsCallbacks {
  * State for test button
  */
 type TestButtonState = 'ready' | 'testing' | 'success' | 'error';
-
-/**
- * Generate a minimal valid WAV file with audio content
- * Creates a 1-second WAV file at 16kHz mono with a simple tone pattern
- */
-function generateTestAudioFile(): Buffer {
-	const sampleRate = 16000;
-	const duration = 1; // 1 second
-	const numSamples = sampleRate * duration;
-	const numChannels = 1;
-	const bitsPerSample = 16;
-	const bytesPerSample = bitsPerSample / 8;
-	const blockAlign = numChannels * bytesPerSample;
-	const byteRate = sampleRate * blockAlign;
-	const dataSize = numSamples * blockAlign;
-	const fileSize = 36 + dataSize;
-
-	const buffer = Buffer.alloc(44 + dataSize);
-	let offset = 0;
-
-	// RIFF header
-	buffer.write('RIFF', offset); offset += 4;
-	buffer.writeUInt32LE(fileSize, offset); offset += 4;
-	buffer.write('WAVE', offset); offset += 4;
-
-	// fmt chunk
-	buffer.write('fmt ', offset); offset += 4;
-	buffer.writeUInt32LE(16, offset); offset += 4; // fmt chunk size
-	buffer.writeUInt16LE(1, offset); offset += 2; // audio format (1 = PCM)
-	buffer.writeUInt16LE(numChannels, offset); offset += 2;
-	buffer.writeUInt32LE(sampleRate, offset); offset += 4;
-	buffer.writeUInt32LE(byteRate, offset); offset += 4;
-	buffer.writeUInt16LE(blockAlign, offset); offset += 2;
-	buffer.writeUInt16LE(bitsPerSample, offset); offset += 2;
-
-	// data chunk
-	buffer.write('data', offset); offset += 4;
-	buffer.writeUInt32LE(dataSize, offset); offset += 4;
-
-	// Generate audio data - simple pattern that sounds like speech
-	// Using multiple frequencies to create a more natural sound
-	for (let i = 0; i < numSamples; i++) {
-		const t = i / sampleRate;
-		// Mix of frequencies to simulate speech-like sound
-		const freq1 = 200 + Math.sin(t * 10) * 50; // Varying fundamental frequency
-		const freq2 = 800 + Math.sin(t * 15) * 100; // First formant
-		const freq3 = 2400; // Second formant
-
-		// Envelope to create word-like pattern
-		const envelope = Math.sin(t * Math.PI) * 0.3;
-
-		const sample = envelope * (
-			Math.sin(2 * Math.PI * freq1 * t) * 0.5 +
-			Math.sin(2 * Math.PI * freq2 * t) * 0.3 +
-			Math.sin(2 * Math.PI * freq3 * t) * 0.2
-		);
-
-		const value = Math.floor(sample * 32767);
-		buffer.writeInt16LE(value, offset);
-		offset += 2;
-	}
-
-	return buffer;
-}
-
-/**
- * Get a temporary test audio file path with the embedded test audio
- */
-function getTestAudioFile(): string {
-	const tempDir = os.tmpdir();
-	const testAudioPath = path.join(tempDir, 'obsidian-ai-toolbox-test.wav');
-
-	// Always regenerate the test audio file to ensure it's valid
-	const audioBuffer = generateTestAudioFile();
-	fs.writeFileSync(testAudioPath, audioBuffer);
-
-	return testAudioPath;
-}
 
 /**
  * Check if a model has all required configuration for testing
@@ -187,13 +107,9 @@ async function testModelTranscription(provider: AIProviderConfig, model: AIModel
 		const config = buildProviderConfig(provider, model);
 		const modelProvider = createModelProvider(config);
 
-		// Get test audio file
-		const testAudioPath = getTestAudioFile();
-
-		// Transcribe the test audio
-		await modelProvider.transcribeAudio(testAudioPath, {
-			includeTimestamps: false
-		});
+		// Create test audio and let the provider build form data with its fields
+		const testAudio = createTestAudioBuffer();
+		await modelProvider.transcribeAudioBuffer(testAudio);
 
 		return { success: true };
 	} catch (error) {

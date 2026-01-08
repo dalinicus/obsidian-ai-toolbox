@@ -1,6 +1,7 @@
 import { ModelProviderConfig, ChatMessage, ChatOptions } from './types';
 import { AIProviderType, DEFAULT_OPENAI_ENDPOINT } from '../settings/index';
-import { BaseProvider } from './base-model-provider';
+import { BaseProvider } from './base-provider';
+import { FormField } from '../processing/audio-processor';
 
 /**
  * OpenAI model provider implementation.
@@ -65,7 +66,7 @@ export class OpenAIModelProvider extends BaseProvider {
 	/**
 	 * OpenAI API requires the model field in the request body
 	 */
-	protected override getAdditionalFormFields(): Array<{ name: string; value: string }> {
+	protected override getAdditionalFormFields(): FormField[] {
 		return [
 			{ name: 'model', value: this.modelId },
 		];

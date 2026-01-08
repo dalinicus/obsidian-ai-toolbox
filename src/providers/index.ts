@@ -5,6 +5,7 @@ export type {
 	TranscriptionOptions,
 	TranscriptionResult,
 	TranscriptionChunk,
+	TestAudioData,
 	ChatMessage,
 	ChatMessageRole,
 	ChatOptions,
@@ -12,7 +13,7 @@ export type {
 } from './types';
 
 // Base class (for extending)
-export { BaseProvider } from './base-model-provider';
+export { BaseProvider } from './base-provider';
 
 // Model provider implementations
 export { AzureOpenAIModelProvider } from './azure-openai-provider';
@@ -24,5 +25,5 @@ export {
 	createTranscriptionProvider,
 	createWorkflowProvider,
 	ProviderCreationError,
-} from './model-provider-factory';
+} from './provider-factory';
 
