@@ -123,7 +123,7 @@ export const DEFAULT_SETTINGS: AIToolboxSettings = {
 /**
  * Supported settings tab types
  */
-export type SettingsTabType = 'providers' | 'workflows' | 'transcription';
+export type SettingsTabType = 'providers' | 'workflows' | 'settings';
 
 /**
  * State for tracking which items should be expanded on next render

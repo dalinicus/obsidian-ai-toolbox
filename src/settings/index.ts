@@ -3,7 +3,7 @@ import AIToolboxPlugin from "../main";
 import { SettingsTabType, ExpandOnNextRenderState } from "./types";
 import { displayProvidersSettings, ProviderSettingsCallbacks } from "./providers";
 import { displayWorkflowsSettings, WorkflowSettingsCallbacks } from "./workflows";
-import { displayTranscriptionSettings, TranscriptionSettingsCallbacks } from "./transcription";
+import { displayAdditionalSettings, AdditionalSettingsCallbacks } from "./additional-settings";
 
 // Re-export all types and constants from types.ts for backward compatibility
 export { DEFAULT_OPENAI_ENDPOINT, generateId, DEFAULT_SETTINGS, DEFAULT_WORKFLOW_CONFIG } from "./types";
@@ -50,8 +50,8 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 			cls: 'settings-tab-button'
 		});
 
-		const transcriptionTabButton = tabHeader.createEl('button', {
-			text: 'Transcription',
+		const settingsTabButton = tabHeader.createEl('button', {
+			text: 'Settings',
 			cls: 'settings-tab-button'
 		});
 
@@ -59,15 +59,15 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 			this.activeTab = tab;
 			providersTabButton.classList.toggle('active', tab === 'providers');
 			workflowsTabButton.classList.toggle('active', tab === 'workflows');
-			transcriptionTabButton.classList.toggle('active', tab === 'transcription');
+			settingsTabButton.classList.toggle('active', tab === 'settings');
 			tabContent.empty();
 
 			if (tab === 'providers') {
 				this.displayProvidersTab(tabContent);
 			} else if (tab === 'workflows') {
 				this.displayWorkflowsTab(tabContent);
-			} else if (tab === 'transcription') {
-				this.displayTranscriptionTab(tabContent);
+			} else if (tab === 'settings') {
+				this.displaySettingsTab(tabContent);
 			} else {
 				const _exhaustiveCheck: never = tab;
 				console.error(`Unknown settings tab: ${String(_exhaustiveCheck)}`);
@@ -76,7 +76,7 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 
 		providersTabButton.addEventListener('click', () => showTab('providers'));
 		workflowsTabButton.addEventListener('click', () => showTab('workflows'));
-		transcriptionTabButton.addEventListener('click', () => showTab('transcription'));
+		settingsTabButton.addEventListener('click', () => showTab('settings'));
 
 		showTab(this.activeTab);
 	}
@@ -99,11 +99,11 @@ export class AIToolboxSettingTab extends PluginSettingTab {
 		displayWorkflowsSettings(containerEl, this.plugin, callbacks);
 	}
 
-	private displayTranscriptionTab(containerEl: HTMLElement): void {
-		const callbacks: TranscriptionSettingsCallbacks = {
+	private displaySettingsTab(containerEl: HTMLElement): void {
+		const callbacks: AdditionalSettingsCallbacks = {
 			refresh: () => this.display()
 		};
-		displayTranscriptionSettings(containerEl, this.plugin, callbacks);
+		displayAdditionalSettings(containerEl, this.plugin, callbacks);
 	}
 }
 
