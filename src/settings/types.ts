@@ -46,12 +46,20 @@ export interface ProviderModelSelection {
 export type WorkflowOutputType = 'popup' | 'new-note' | 'at-cursor';
 
 /**
+ * Prompt source type options for workflows
+ */
+export type PromptSourceType = 'inline' | 'from-file';
+
+/**
  * Configuration for a custom workflow
  */
 export interface WorkflowConfig {
 	id: string;
 	name: string;
 	promptText: string;
+	promptSourceType: PromptSourceType;
+	promptFolderPath: string;
+	promptFilePath: string;
 	provider: ProviderModelSelection | null;
 	outputType: WorkflowOutputType;
 	outputFolder: string;
@@ -65,6 +73,9 @@ export interface WorkflowConfig {
 export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	name: 'New workflow',
 	promptText: '',
+	promptSourceType: 'inline',
+	promptFolderPath: '',
+	promptFilePath: '',
 	provider: null,
 	outputType: 'popup',
 	outputFolder: '',

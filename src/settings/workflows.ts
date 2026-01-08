@@ -3,12 +3,13 @@ import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
 	WorkflowOutputType,
+	PromptSourceType,
 	ExpandOnNextRenderState,
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG
 } from "./types";
-import { FolderSuggest } from "../components/folder-suggest";
 import { createCollapsibleSection } from "../components/collapsible-section";
+import { createPathPicker } from "../components/path-picker";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -26,6 +27,14 @@ const OUTPUT_TYPE_OPTIONS: Record<WorkflowOutputType, string> = {
 	'popup': 'Show in popup',
 	'new-note': 'Create new note',
 	'at-cursor': 'Insert at cursor'
+};
+
+/**
+ * Prompt source type display labels
+ */
+const PROMPT_SOURCE_OPTIONS: Record<PromptSourceType, string> = {
+	'inline': 'Inline',
+	'from-file': 'From file'
 };
 
 /**
@@ -103,21 +112,64 @@ function displayWorkflowSettings(
 	// Provider/Model selection (only models that support chat)
 	displayWorkflowProviderSelection(contentContainer, plugin, workflow);
 
-	// Prompt text
+	// Prompt source type dropdown
+	const promptSourceType = workflow.promptSourceType ?? 'inline';
 	new Setting(contentContainer)
-		.setName('Prompt text')
-		.setDesc('The prompt text to send to the AI model')
-		.addTextArea(textArea => {
-			textArea
-				.setPlaceholder('Enter your prompt text here...')
-				.setValue(workflow.promptText)
-				.onChange(async (value) => {
-					workflow.promptText = value;
-					await plugin.saveSettings();
-				});
-			textArea.inputEl.rows = 6;
-			textArea.inputEl.addClass('workflow-textarea');
+		.setName('Prompt source')
+		.setDesc('Choose where the prompt text comes from')
+		.addDropdown(dropdown => dropdown
+			.addOptions(PROMPT_SOURCE_OPTIONS)
+			.setValue(promptSourceType)
+			.onChange(async (value) => {
+				workflow.promptSourceType = value as PromptSourceType;
+				await plugin.saveSettings();
+				// Preserve expand state when refreshing
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
+			}));
+
+	// Prompt text textarea (only show when source is inline)
+	if (promptSourceType === 'inline') {
+		new Setting(contentContainer)
+			.setName('Prompt text')
+			.setDesc('The prompt text to send to the AI model')
+			.addTextArea(textArea => {
+				textArea
+					.setPlaceholder('Enter your prompt text here...')
+					.setValue(workflow.promptText)
+					.onChange(async (value) => {
+						workflow.promptText = value;
+						await plugin.saveSettings();
+					});
+				textArea.inputEl.rows = 6;
+				textArea.inputEl.addClass('workflow-textarea');
+			});
+	}
+
+	// Prompt file picker (only show when source is from-file)
+	if (promptSourceType === 'from-file') {
+		createPathPicker({
+			mode: 'folder-file',
+			containerEl: contentContainer,
+			app: plugin.app,
+			name: 'Prompt file',
+			description: 'First select a folder to filter, then select a file from that folder',
+			initialFolderPath: workflow.promptFolderPath ?? '',
+			initialFilePath: workflow.promptFilePath ?? '',
+			folderPlaceholder: 'Select folder...',
+			filePlaceholder: 'Select file...',
+			onFolderChange: async (folderPath: string) => {
+				workflow.promptFolderPath = folderPath;
+				await plugin.saveSettings();
+			},
+			onFileChange: async (filePath: string) => {
+				workflow.promptFilePath = filePath;
+				await plugin.saveSettings();
+			}
 		});
+	}
 
 	// Make available as input to other workflows toggle
 	new Setting(contentContainer)
@@ -166,19 +218,19 @@ function displayWorkflowSettings(
 
 		// Output folder (only show if output type is new-note)
 		if (workflow.outputType === 'new-note') {
-			new Setting(contentContainer)
-				.setName('Output folder')
-				.setDesc('Folder where notes will be created (leave empty to use default)')
-				.addSearch(search => {
-					search
-						.setPlaceholder('Default folder')
-						.setValue(workflow.outputFolder || '')
-						.onChange(async (value) => {
-							workflow.outputFolder = value;
-							await plugin.saveSettings();
-						});
-					new FolderSuggest(plugin.app, search.inputEl);
-				});
+			createPathPicker({
+				mode: 'folder-only',
+				containerEl: contentContainer,
+				app: plugin.app,
+				name: 'Output folder',
+				description: 'Folder where notes will be created (leave empty to use default)',
+				folderPlaceholder: 'Default folder',
+				initialFolderPath: workflow.outputFolder || '',
+				onFolderChange: async (folderPath: string) => {
+					workflow.outputFolder = folderPath;
+					await plugin.saveSettings();
+				}
+			});
 		}
 	}
 

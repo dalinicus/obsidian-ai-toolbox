@@ -1,5 +1,9 @@
 # Obsidian community plugin
 
+## Agent instructions
+
+- Do not run build or lint commands unless explicitly instructed by the user.
+
 ## Project overview
 
 - Target: Obsidian Community Plugin (TypeScript → bundled JavaScript).

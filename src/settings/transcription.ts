@@ -1,7 +1,7 @@
 import { Setting } from "obsidian";
 import AIToolboxPlugin from "../main";
-import { FolderSuggest } from "../components/folder-suggest";
 import { createCollapsibleSection } from "../components/collapsible-section";
+import { createPathPicker } from "../components/path-picker";
 
 /**
  * Callbacks for the transcription settings tab to communicate with the main settings tab
@@ -58,19 +58,19 @@ export function displayTranscriptionSettings(
 				await plugin.saveSettings();
 			}));
 
-	new Setting(containerEl)
-		.setName('Notes folder')
-		.setDesc('Folder where transcription notes will be created (leave empty for vault root)')
-		.addSearch(search => {
-			search
-				.setPlaceholder('Vault root')
-				.setValue(plugin.settings.outputFolder)
-				.onChange(async (value) => {
-					plugin.settings.outputFolder = value;
-					await plugin.saveSettings();
-				});
-			new FolderSuggest(plugin.app, search.inputEl);
-		});
+	createPathPicker({
+		mode: 'folder-only',
+		containerEl,
+		app: plugin.app,
+		name: 'Notes folder',
+		description: 'Folder where transcription notes will be created (leave empty for vault root)',
+		folderPlaceholder: 'Vault root',
+		initialFolderPath: plugin.settings.outputFolder,
+		onFolderChange: async (folderPath: string) => {
+			plugin.settings.outputFolder = folderPath;
+			await plugin.saveSettings();
+		}
+	});
 
 	new Setting(containerEl)
 		.setName('Keep video file')

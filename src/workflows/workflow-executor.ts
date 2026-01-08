@@ -146,6 +146,38 @@ ${response}
 }
 
 /**
+ * Get the prompt text for a workflow, loading from file if needed.
+ */
+async function getPromptText(app: App, workflow: WorkflowConfig): Promise<string | null> {
+	const sourceType = workflow.promptSourceType ?? 'inline';
+
+	if (sourceType === 'from-file') {
+		const filePath = workflow.promptFilePath;
+		if (!filePath || !filePath.trim()) {
+			new Notice(`Workflow "${workflow.name}" has no prompt file configured. Please select a file in settings.`);
+			return null;
+		}
+
+		const file = app.vault.getAbstractFileByPath(filePath);
+		if (!file || !(file instanceof TFile)) {
+			new Notice(`Prompt file "${filePath}" not found in vault for workflow "${workflow.name}".`);
+			return null;
+		}
+
+		try {
+			return await app.vault.read(file);
+		} catch (error) {
+			console.error('Error reading prompt file:', error);
+			new Notice(`Failed to read prompt file "${filePath}": ${error instanceof Error ? error.message : String(error)}`);
+			return null;
+		}
+	}
+
+	// Default: use inline prompt text
+	return workflow.promptText;
+}
+
+/**
  * Execute a workflow using its configured provider and display the result.
  *
  * @param app - Obsidian App instance
@@ -163,8 +195,14 @@ export async function executeWorkflow(
 		return;
 	}
 
+	// Get the prompt text (from file or inline)
+	const promptText = await getPromptText(app, workflow);
+	if (promptText === null) {
+		return; // Error already shown to user
+	}
+
 	// Validate workflow has text
-	if (!workflow.promptText.trim()) {
+	if (!promptText.trim()) {
 		new Notice(`Workflow "${workflow.name}" has no prompt text. Please add prompt text in settings.`);
 		return;
 	}
@@ -187,7 +225,7 @@ export async function executeWorkflow(
 
 		// Build chat messages with the prompt text as a user message
 		const messages: ChatMessage[] = [
-			{ role: 'user', content: workflow.promptText }
+			{ role: 'user', content: promptText }
 		];
 
 		// Send the chat request
@@ -197,7 +235,7 @@ export async function executeWorkflow(
 		const outputType = workflow.outputType || 'popup';
 
 		if (outputType === 'new-note') {
-			await createNoteWithResult(app, workflow.name, workflow.promptText, result.content, workflow.outputFolder);
+			await createNoteWithResult(app, workflow.name, promptText, result.content, workflow.outputFolder);
 		} else if (outputType === 'at-cursor') {
 			insertAtCursor(app, result.content);
 		} else {

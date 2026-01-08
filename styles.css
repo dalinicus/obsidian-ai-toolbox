@@ -224,3 +224,15 @@ button.mod-success {
 button.mod-success:hover {
 	background-color: #256632;
 }
+
+/* Path picker styles */
+.path-picker-folder-file .setting-item-control {
+	display: flex;
+	gap: 8px;
+	flex-wrap: nowrap;
+}
+
+.path-picker-folder-input,
+.path-picker-file-input {
+	min-width: 140px;
+}
