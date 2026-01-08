@@ -2,7 +2,8 @@ import { Notice, Plugin } from 'obsidian';
 import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings/index";
 import { createTranscriptionProvider } from "./providers";
 import { transcribeFromClipboard } from "./transcriptions/transcription-workflow";
-import { WorkflowSuggesterModal, executeWorkflow } from "./workflows";
+import { WorkflowSuggesterModal } from "./components/workflow-suggester";
+import { executeWorkflow } from "./processing/workflow-executor";
 
 export default class AIToolboxPlugin extends Plugin {
 	settings: AIToolboxSettings;

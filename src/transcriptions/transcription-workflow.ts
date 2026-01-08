@@ -1,7 +1,7 @@
 import { App, Notice } from 'obsidian';
 import { AIToolboxSettings } from '../settings';
 import { ModelProvider, TranscriptionOptions } from '../providers';
-import { extractAudioFromClipboard } from './video-downloader';
+import { extractAudioFromClipboard } from '../processing';
 import { createTranscriptionNote, openTranscriptionNote } from './transcription-note';
 import * as fs from 'fs';
 

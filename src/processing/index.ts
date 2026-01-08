@@ -23,6 +23,13 @@ export type {
 export {
     getOutputDirectory,
     runYtDlp,
+    extractAudioFromClipboard,
+} from './video-processor';
+
+export type {
+    VideoProcessorConfig,
+    YtDlpResult,
+    ExtractAudioResult,
 } from './video-processor';
 
 // Video platforms - platform-specific handlers

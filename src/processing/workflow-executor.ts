@@ -380,4 +380,3 @@ async function executeTranscriptionWorkflow(
 
 	modal.open();
 }
-
