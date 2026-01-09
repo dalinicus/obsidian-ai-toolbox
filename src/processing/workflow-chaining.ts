@@ -1,5 +1,6 @@
 import { App, MarkdownView } from 'obsidian';
-import { WorkflowConfig, AIToolboxSettings } from '../settings';
+import { WorkflowConfig, AIToolboxSettings, TimestampGranularity } from '../settings';
+import { TranscriptionResult, TranscriptionChunk } from '../providers';
 
 /**
  * Result from executing a workflow, used for chaining
@@ -121,26 +122,64 @@ export function createChatWorkflowTokens(
 }
 
 /**
- * Create transcription workflow tokens from execution data
+ * Format a timestamp in seconds to MM:SS or HH:MM:SS format.
+ */
+export function formatTimestamp(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    if (hours > 0) {
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Format transcription chunks with timestamps.
+ * Each segment is prefixed with its start time in [MM:SS] format.
+ */
+export function formatTranscriptionWithTimestamps(chunks: TranscriptionChunk[]): string {
+    if (!chunks || chunks.length === 0) {
+        return '';
+    }
+
+    return chunks
+        .map(chunk => `[${formatTimestamp(chunk.timestamp[0])}] ${chunk.text}`)
+        .join('\n');
+}
+
+/**
+ * Create transcription workflow tokens from execution data.
+ * Generates plain text transcription and optionally timestamped version.
+ * The transcriptionWithTimestamps token is only included when granularity is not 'disabled'.
  */
 export function createTranscriptionWorkflowTokens(
-    transcriptionText: string,
+    transcriptionResult: TranscriptionResult,
     metadata?: {
         title?: string;
         uploader?: string;
         sourceUrl?: string;
         description?: string;
         tags?: string[];
-    }
+    },
+    timestampGranularity?: TimestampGranularity
 ): Record<string, string> {
-    return {
-        transcription: transcriptionText,
+    const tokens: Record<string, string> = {
+        transcription: transcriptionResult.text,
         title: metadata?.title ?? '',
         author: metadata?.uploader ?? '',
         sourceUrl: metadata?.sourceUrl ?? '',
         description: metadata?.description ?? '',
         tags: metadata?.tags?.join(', ') ?? ''
     };
+
+    // Only include timestamped transcription when timestamps are enabled
+    if (timestampGranularity !== 'disabled') {
+        tokens.transcriptionWithTimestamps = formatTranscriptionWithTimestamps(transcriptionResult.chunks);
+    }
+
+    return tokens;
 }
 
 /**

@@ -27,7 +27,8 @@ import {
     getDependencyWorkflowIds,
     gatherContextValues,
     replaceContextTokens,
-    hasContextTokens
+    hasContextTokens,
+    formatTranscriptionWithTimestamps
 } from './workflow-chaining';
 
 /**
@@ -59,35 +60,6 @@ function createInputHandler(sourceType: TranscriptionSourceType): InputHandler {
 		default:
 			return new VaultFileInputHandler();
 	}
-}
-
-/**
- * Format a timestamp in seconds to MM:SS or HH:MM:SS format.
- */
-function formatTimestamp(seconds: number): string {
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const secs = Math.floor(seconds % 60);
-
-	if (hours > 0) {
-		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-	}
-	return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-/**
- * Format a transcription result, optionally including timestamps.
- * When timestamps are included and chunks are available, formats each segment
- * with its start time prefix.
- */
-function formatTranscriptionResult(result: TranscriptionResult, includeTimestamps: boolean): string {
-	if (!includeTimestamps || !result.chunks || result.chunks.length === 0) {
-		return result.text;
-	}
-
-	return result.chunks
-		.map(chunk => `[${formatTimestamp(chunk.timestamp[0])}] ${chunk.text}`)
-		.join('\n');
 }
 
 /**
@@ -466,12 +438,15 @@ async function executeTranscriptionWorkflow(
 		new Notice(`Transcribing audio...`);
 
 		const transcriptionOptions: TranscriptionOptions = {
-			includeTimestamps: workflow.includeTimestamps ?? true,
+			timestampGranularity: workflow.timestampGranularity ?? 'disabled',
 			language: workflow.language || undefined
 		};
 
 		const transcriptionResult = await provider.transcribeAudio(inputResult.audioFilePath, transcriptionOptions);
-		const formattedText = formatTranscriptionResult(transcriptionResult, workflow.includeTimestamps ?? true);
+		// Use timestamped version for display output if available, otherwise plain text
+		const formattedText = transcriptionResult.chunks.length > 0
+			? formatTranscriptionWithTimestamps(transcriptionResult.chunks)
+			: transcriptionResult.text;
 		const noteTitle = generateTranscriptionNoteTitle(inputResult, workflow.name);
 
 		const outputType = workflow.outputType || 'new-note';
@@ -526,18 +501,18 @@ async function executeTranscriptionWorkflowInternal(
 			return { ...baseResult, error: 'No input provided or cancelled' };
 		}
 
+		const timestampGranularity = workflow.timestampGranularity ?? 'disabled';
 		const transcriptionOptions: TranscriptionOptions = {
-			includeTimestamps: workflow.includeTimestamps ?? true,
+			timestampGranularity,
 			language: workflow.language || undefined
 		};
 
 		const transcriptionResult = await provider.transcribeAudio(inputResult.audioFilePath, transcriptionOptions);
-		const formattedText = formatTranscriptionResult(transcriptionResult, workflow.includeTimestamps ?? true);
 
 		return {
 			...baseResult,
 			success: true,
-			tokens: createTranscriptionWorkflowTokens(formattedText, inputResult.metadata)
+			tokens: createTranscriptionWorkflowTokens(transcriptionResult, inputResult.metadata, timestampGranularity)
 		};
 	} catch (error) {
 		const errorMessage = error instanceof Error ? error.message : String(error);

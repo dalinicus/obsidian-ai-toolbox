@@ -1,4 +1,4 @@
-import { WorkflowType } from "../settings/types";
+import { WorkflowType, TimestampGranularity } from "../settings/types";
 
 /**
  * Token definition for display in the settings UI
@@ -36,8 +36,10 @@ export interface TranscriptionWorkflowTokens {
 	author: string;
 	/** The title of the video */
 	title: string;
-	/** The full transcription text */
+	/** The full transcription text (plain text without timestamps) */
 	transcription: string;
+	/** The transcription with timestamps (formatted with [MM:SS] prefixes) */
+	transcriptionWithTimestamps: string;
 	/** The original video URL */
 	sourceUrl: string;
 	/** The video description */
@@ -63,7 +65,8 @@ export const TRANSCRIPTION_WORKFLOW_TOKENS: TokenDefinition[] = [
 	{ name: 'sourceUrl', description: 'The original video URL' },
 	{ name: 'description', description: 'The video description' },
 	{ name: 'tags', description: 'The video tags (comma-separated)' },
-	{ name: 'transcription', description: 'The full transcription text' }
+	{ name: 'transcription', description: 'The plain transcription text (no timestamps)' },
+	{ name: 'transcriptionWithTimestamps', description: 'The transcription with [MM:SS] timestamps' }
 ];
 
 /**
@@ -77,16 +80,37 @@ const TOKEN_LABELS: Record<string, string> = {
 	sourceUrl: 'Source URL',
 	description: 'Description',
 	tags: 'Tags',
-	transcription: 'Transcription'
+	transcription: 'Transcription',
+	transcriptionWithTimestamps: 'Transcription (with timestamps)'
 };
 
 /**
- * Get token definitions for a workflow type
+ * Options for getting token definitions
  */
-export function getTokenDefinitionsForType(type: WorkflowType): TokenDefinition[] {
-	return type === 'transcription'
-		? TRANSCRIPTION_WORKFLOW_TOKENS
-		: CHAT_WORKFLOW_TOKENS;
+export interface TokenDefinitionOptions {
+	/** For transcription workflows, the timestamp granularity setting */
+	timestampGranularity?: TimestampGranularity;
+}
+
+/**
+ * Get token definitions for a workflow type.
+ * For transcription workflows, the transcriptionWithTimestamps token is excluded
+ * when timestampGranularity is 'disabled'.
+ */
+export function getTokenDefinitionsForType(
+	type: WorkflowType,
+	options?: TokenDefinitionOptions
+): TokenDefinition[] {
+	if (type === 'transcription') {
+		// Filter out transcriptionWithTimestamps when granularity is disabled
+		if (options?.timestampGranularity === 'disabled') {
+			return TRANSCRIPTION_WORKFLOW_TOKENS.filter(
+				token => token.name !== 'transcriptionWithTimestamps'
+			);
+		}
+		return TRANSCRIPTION_WORKFLOW_TOKENS;
+	}
+	return CHAT_WORKFLOW_TOKENS;
 }
 
 /**
@@ -95,12 +119,14 @@ export function getTokenDefinitionsForType(type: WorkflowType): TokenDefinition[
  *
  * @param workflowId - The ID of the workflow
  * @param workflowType - The type of the workflow (chat or transcription)
+ * @param options - Optional settings like timestampGranularity
  */
 export function getWorkflowContextTokens(
 	workflowId: string,
-	workflowType: WorkflowType
+	workflowType: WorkflowType,
+	options?: TokenDefinitionOptions
 ): TokenDefinition[] {
-	const baseTokens = getTokenDefinitionsForType(workflowType);
+	const baseTokens = getTokenDefinitionsForType(workflowType, options);
 
 	return baseTokens.map(token => ({
 		name: `${workflowId}.${token.name}`,
@@ -114,12 +140,14 @@ export function getWorkflowContextTokens(
  *
  * @param workflowId - The ID of the workflow
  * @param workflowType - The type of the workflow (chat or transcription)
+ * @param options - Optional settings like timestampGranularity
  */
 export function generateWorkflowTokenTemplate(
 	workflowId: string,
-	workflowType: WorkflowType
+	workflowType: WorkflowType,
+	options?: TokenDefinitionOptions
 ): string {
-	const tokens = getTokenDefinitionsForType(workflowType);
+	const tokens = getTokenDefinitionsForType(workflowType, options);
 
 	return tokens
 		.map(token => {

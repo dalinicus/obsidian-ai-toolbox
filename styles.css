@@ -601,32 +601,37 @@ button.mod-success:hover {
 	color: var(--text-on-accent);
 }
 
-/* Additional settings styles */
-.additional-settings-toggle {
+/* Global advanced settings toggle (above tab header) */
+.settings-advanced-toggle {
 	justify-content: flex-end;
+	margin-bottom: 8px;
+	border-bottom: none;
 }
 
-.additional-settings-toggle .setting-item-name {
+.settings-advanced-toggle .setting-item-name {
 	display: none;
 }
 
-.additional-settings-toggle-label {
+.settings-advanced-toggle-label {
 	font-size: 0.85em;
 	margin-right: 8px;
 }
 
-.additional-settings-heading .setting-item-name {
-	font-size: 1.17em;
+.settings-advanced-toggle-label-active {
+	color: var(--text-warning);
 }
 
-.additional-settings-advanced-hidden {
+/* Settings hidden when advanced toggle is off */
+.settings-advanced-hidden {
 	display: none;
 }
 
-.additional-settings-advanced-label-active {
+/* Advanced setting name styling when visible */
+.settings-advanced-name {
 	color: var(--text-warning);
 }
 
-.additional-settings-advanced-name {
-	color: var(--text-warning);
+/* Additional settings tab styles */
+.additional-settings-heading .setting-item-name {
+	font-size: 1.17em;
 }

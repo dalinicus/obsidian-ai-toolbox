@@ -7,6 +7,7 @@ import {
 	PromptSourceType,
 	TranscriptionMediaType,
 	TranscriptionSourceType,
+	TimestampGranularity,
 	ChatContextType,
 	ExpandOnNextRenderState,
 	generateId,
@@ -30,6 +31,7 @@ export interface WorkflowSettingsCallbacks {
 	getExpandState: () => ExpandOnNextRenderState;
 	setExpandState: (state: ExpandOnNextRenderState) => void;
 	refresh: () => void;
+	isAdvancedVisible: () => boolean;
 }
 
 /**
@@ -99,6 +101,8 @@ function displayWorkflowSettings(
 	const workflowType = workflow.type || 'chat';
 	const icon = workflowType === 'chat' ? 'message-circle' : 'audio-lines';
 
+	const showAdvanced = callbacks.isAdvancedVisible();
+
 	const { contentContainer, updateTitle, isExpanded } = createCollapsibleSection({
 		containerEl,
 		title: workflow.name || 'Unnamed workflow',
@@ -108,7 +112,7 @@ function displayWorkflowSettings(
 		startExpanded: shouldExpand,
 		isHeading: true,
 		icon,
-		secondaryText: workflow.id,
+		secondaryText: showAdvanced ? workflow.id : undefined,
 		onDelete: async () => {
 			const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
 			if (index !== -1) {
@@ -435,8 +439,9 @@ function displayTranscriptionWorkflowSettings(
 				await plugin.saveSettings();
 			}));
 
-	// Language setting
-	new Setting(contentContainer)
+	// Language setting (advanced)
+	const showAdvanced = callbacks.isAdvancedVisible();
+	const languageSetting = new Setting(contentContainer)
 		.setName('Language')
 		.setDesc('Optional language code for transcription (e.g., "en", "es", "fr"). Leave empty for auto-detection.')
 		.addText(text => text
@@ -446,6 +451,33 @@ function displayTranscriptionWorkflowSettings(
 				workflow.language = value;
 				await plugin.saveSettings();
 			}));
+	languageSetting.settingEl.toggleClass('settings-advanced-hidden', !showAdvanced);
+	if (showAdvanced) {
+		languageSetting.nameEl.addClass('settings-advanced-name');
+	}
+
+	// Timestamp granularity dropdown (advanced)
+	const granularityOptions: Record<TimestampGranularity, string> = {
+		'disabled': 'Disabled (no timestamps)',
+		'segment': 'Segment (sentence/phrase level)',
+		'word': 'Word (individual word level)'
+	};
+	const granularitySetting = new Setting(contentContainer)
+		.setName('Timestamp granularity')
+		.setDesc('Level of detail for timestamps. Disabling reduces token usage.')
+		.addDropdown(dropdown => dropdown
+			.addOptions(granularityOptions)
+			.setValue(workflow.timestampGranularity ?? 'disabled')
+			.onChange(async (value) => {
+				workflow.timestampGranularity = value as TimestampGranularity;
+				await plugin.saveSettings();
+				callbacks.setExpandState({ workflowId: workflow.id });
+				callbacks.refresh();
+			}));
+	granularitySetting.settingEl.toggleClass('settings-advanced-hidden', !showAdvanced);
+	if (showAdvanced) {
+		granularitySetting.nameEl.addClass('settings-advanced-name');
+	}
 
 	// Make available as input to other workflows toggle
 	new Setting(contentContainer)
@@ -495,17 +527,6 @@ function displayTranscriptionWorkflowSettings(
 						callbacks.setExpandState({ workflowId: workflow.id });
 					}
 					callbacks.refresh();
-				}));
-
-		// Include timestamps toggle
-		new Setting(contentContainer)
-			.setName('Include timestamps')
-			.setDesc('Include timestamps in the transcription output')
-			.addToggle(toggle => toggle
-				.setValue(workflow.includeTimestamps ?? true)
-				.onChange(async (value) => {
-					workflow.includeTimestamps = value;
-					await plugin.saveSettings();
 				}));
 
 		// Output folder (only show if output type is new-note)
@@ -719,6 +740,8 @@ interface TokenGroup {
 	workflowId?: string;
 	/** For workflow groups: the source workflow type */
 	workflowType?: WorkflowType;
+	/** For transcription workflows: the timestamp granularity setting */
+	timestampGranularity?: TimestampGranularity;
 }
 
 /**
@@ -789,16 +812,19 @@ function displayAvailableTokensSection(
 		if (!sourceWorkflow) continue;
 
 		const workflowType = sourceWorkflow.type || 'chat';
+		const timestampGranularity = sourceWorkflow.timestampGranularity;
 		const workflowTokens = getWorkflowContextTokens(
 			sourceWorkflow.id,
-			workflowType
+			workflowType,
+			{ timestampGranularity }
 		);
 		if (workflowTokens.length > 0) {
 			tokenGroups.push({
 				name: sourceWorkflow.name || 'Unnamed workflow',
 				tokens: workflowTokens,
 				workflowId: sourceWorkflow.id,
-				workflowType: workflowType
+				workflowType: workflowType,
+				timestampGranularity: timestampGranularity
 			});
 			totalTokenCount += workflowTokens.length;
 		}
@@ -843,9 +869,10 @@ function displayAvailableTokensSection(
 			groupHeader.setAttribute('title', 'Click to copy all tokens as template');
 			const workflowId = group.workflowId;
 			const workflowType = group.workflowType;
+			const timestampGranularity = group.timestampGranularity;
 			groupHeader.addEventListener('click', (e) => {
 				e.stopPropagation();
-				const template = generateWorkflowTokenTemplate(workflowId, workflowType);
+				const template = generateWorkflowTokenTemplate(workflowId, workflowType, { timestampGranularity });
 				void navigator.clipboard.writeText(template).then(() => {
 					new Notice('Copied token template to clipboard');
 				});

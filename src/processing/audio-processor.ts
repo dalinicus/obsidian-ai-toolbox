@@ -1,12 +1,32 @@
 import { Buffer } from 'buffer';
 import * as fs from 'fs';
+import { TimestampGranularity } from '../settings';
 
 /**
- * Interface for transcription API response
+ * Word-level timestamp data from transcription API
+ */
+export interface TranscriptionWord {
+    word: string;
+    start: number;
+    end: number;
+}
+
+/**
+ * Segment-level timestamp data from transcription API
+ */
+export interface TranscriptionSegment {
+    text: string;
+    start: number;
+    end: number;
+}
+
+/**
+ * Interface for transcription API response (verbose_json format)
  */
 export interface TranscriptionApiResponse {
     text: string;
-    segments?: Array<{ text: string; start: number; end: number }>;
+    segments?: TranscriptionSegment[];
+    words?: TranscriptionWord[];
 }
 
 /**
@@ -41,7 +61,7 @@ export interface MultipartFormDataOptions {
     boundary: string;
     audioBuffer: Buffer;
     fileName: string;
-    includeTimestamps: boolean;
+    timestampGranularity: TimestampGranularity;
     language?: string;
     additionalFields?: FormField[];
 }
@@ -51,7 +71,7 @@ export interface MultipartFormDataOptions {
  */
 export interface PrepareAudioFormDataOptions {
     audioFilePath: string;
-    includeTimestamps: boolean;
+    timestampGranularity: TimestampGranularity;
     language?: string;
     additionalFields?: FormField[];
 }
@@ -93,12 +113,14 @@ function combinePartsToArrayBuffer(parts: (string | Buffer)[]): ArrayBuffer {
  * Builds multipart form data for audio transcription API requests.
  * Creates a properly formatted multipart/form-data body with the audio file
  * and optional configuration fields.
+ * - Uses 'json' format when timestamps are disabled (reduces token usage)
+ * - Uses 'verbose_json' format when timestamps are enabled (segment or word)
  *
  * @param options - Configuration for the multipart form data
  * @returns ArrayBuffer containing the complete multipart form data
  */
 export function buildMultipartFormData(options: MultipartFormDataOptions): ArrayBuffer {
-    const { boundary, audioBuffer, fileName, includeTimestamps, language, additionalFields = [] } = options;
+    const { boundary, audioBuffer, fileName, timestampGranularity, language, additionalFields = [] } = options;
     const parts: (string | Buffer)[] = [];
 
     // File field
@@ -115,8 +137,8 @@ export function buildMultipartFormData(options: MultipartFormDataOptions): Array
         parts.push(`${field.value}\r\n`);
     }
 
-    // Response format
-    const responseFormat = includeTimestamps ? 'verbose_json' : 'json';
+    // Use 'json' when timestamps disabled, 'verbose_json' when enabled
+    const responseFormat = timestampGranularity === 'disabled' ? 'json' : 'verbose_json';
     parts.push(`--${boundary}\r\n`);
     parts.push(`Content-Disposition: form-data; name="response_format"\r\n\r\n`);
     parts.push(`${responseFormat}\r\n`);
@@ -128,11 +150,11 @@ export function buildMultipartFormData(options: MultipartFormDataOptions): Array
         parts.push(`${language}\r\n`);
     }
 
-    // Timestamp granularities (for verbose_json)
-    if (includeTimestamps) {
+    // Only add timestamp_granularities[] when timestamps are enabled
+    if (timestampGranularity !== 'disabled') {
         parts.push(`--${boundary}\r\n`);
         parts.push(`Content-Disposition: form-data; name="timestamp_granularities[]"\r\n\r\n`);
-        parts.push(`segment\r\n`);
+        parts.push(`${timestampGranularity}\r\n`);
     }
 
     parts.push(`--${boundary}--\r\n`);
@@ -178,7 +200,7 @@ export function extractFileName(filePath: string, defaultName = 'audio.mp3'): st
  * @throws Error if the audio file cannot be read
  */
 export function prepareAudioFormData(options: PrepareAudioFormDataOptions): PreparedAudioFormData {
-    const { audioFilePath, includeTimestamps, language, additionalFields } = options;
+    const { audioFilePath, timestampGranularity, language, additionalFields } = options;
 
     validateAudioFile(audioFilePath);
 
@@ -190,7 +212,7 @@ export function prepareAudioFormData(options: PrepareAudioFormDataOptions): Prep
         boundary,
         audioBuffer,
         fileName,
-        includeTimestamps,
+        timestampGranularity,
         language,
         additionalFields,
     });

@@ -66,6 +66,14 @@ export type TranscriptionMediaType = 'video' | 'audio';
 export type TranscriptionSourceType = 'select-file-from-vault' | 'url-from-clipboard' | 'url-from-selection';
 
 /**
+ * Timestamp granularity for transcription output.
+ * - 'disabled': No timestamps (uses simpler JSON format, reduces token usage)
+ * - 'segment': Timestamps at sentence/phrase level
+ * - 'word': Timestamps at individual word level
+ */
+export type TimestampGranularity = 'disabled' | 'segment' | 'word';
+
+/**
  * Context configuration for transcription workflows
  */
 export interface TranscriptionContextConfig {
@@ -119,7 +127,7 @@ export interface WorkflowConfig {
 	workflowContexts?: WorkflowContextConfig[];
 	// Transcription-specific settings (optional for backward compatibility)
 	language?: string;
-	includeTimestamps?: boolean;
+	timestampGranularity?: TimestampGranularity;
 	transcriptionContext?: TranscriptionContextConfig;
 }
 
@@ -141,7 +149,7 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	contexts: [],
 	workflowContexts: [],
 	language: '',
-	includeTimestamps: true
+	timestampGranularity: 'disabled'
 };
 
 export interface AIToolboxSettings {

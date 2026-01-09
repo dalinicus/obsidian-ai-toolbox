@@ -1,6 +1,6 @@
 import { Notice, requestUrl } from 'obsidian';
-import { ModelProvider, ModelProviderConfig, TranscriptionOptions, TranscriptionResult, ChatMessage, ChatOptions, ChatResult, TestAudioData } from './types';
-import { AIProviderType } from '../settings';
+import { ModelProvider, ModelProviderConfig, TranscriptionOptions, TranscriptionResult, ChatMessage, ChatOptions, ChatResult, TestAudioData, TranscriptionWord } from './types';
+import { AIProviderType, TimestampGranularity } from '../settings';
 import { prepareAudioFormData, TranscriptionApiResponse, FormField, buildMultipartFormData, generateFormBoundary } from '../processing/audio-processor';
 
 /**
@@ -98,9 +98,11 @@ export abstract class BaseProvider implements ModelProvider {
 		try {
 			new Notice(`Transcribing audio with ${this.getProviderDisplayName()}`);
 
+			const timestampGranularity = options.timestampGranularity ?? 'segment';
+
 			const { boundary, formData } = prepareAudioFormData({
 				audioFilePath,
-				includeTimestamps: options.includeTimestamps || false,
+				timestampGranularity,
 				language: options.language,
 				additionalFields: this.getAdditionalFormFields(),
 			});
@@ -108,7 +110,7 @@ export abstract class BaseProvider implements ModelProvider {
 			const result = await this.sendTranscriptionRequest(boundary, formData);
 			new Notice('Transcription complete!');
 
-			return this.parseTranscriptionResponse(result, audioFilePath, options.includeTimestamps || false);
+			return this.parseTranscriptionResponse(result, audioFilePath, timestampGranularity);
 		} catch (error) {
 			console.error('Transcription error:', error);
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -125,7 +127,7 @@ export abstract class BaseProvider implements ModelProvider {
 			boundary,
 			audioBuffer: testAudio.audioBuffer,
 			fileName: testAudio.fileName,
-			includeTimestamps: false,
+			timestampGranularity: 'segment',
 			additionalFields: this.getAdditionalFormFields(),
 		});
 
@@ -220,21 +222,36 @@ export abstract class BaseProvider implements ModelProvider {
 		return result;
 	}
 
+	/**
+	 * Parse transcription API response into a TranscriptionResult.
+	 * - When granularity is 'disabled': returns empty chunks (API uses 'json' format with no timestamps)
+	 * - When granularity is 'segment': extracts segment-level timestamps
+	 * - When granularity is 'word': extracts both segment and word-level timestamps
+	 */
 	protected parseTranscriptionResponse(
 		response: TranscriptionApiResponse,
 		audioFilePath: string,
-		includeTimestamps: boolean
+		granularity: TimestampGranularity
 	): TranscriptionResult {
+		// Extract segment-level chunks (empty array when granularity is 'disabled')
+		const chunks = (response.segments ?? []).map(segment => ({
+			text: segment.text.trim(),
+			timestamp: [segment.start, segment.end] as [number, number],
+		}));
+
 		const result: TranscriptionResult = {
 			text: response.text,
+			chunks,
 			audioFilePath,
 		};
 
-		if (includeTimestamps && response.segments) {
-			result.chunks = response.segments.map(segment => ({
-				text: segment.text.trim(),
-				timestamp: [segment.start, segment.end] as [number, number],
-			}));
+		// Include word-level timestamps if granularity is 'word' and words are available
+		if (granularity === 'word' && response.words) {
+			result.words = response.words.map(word => ({
+				word: word.word,
+				start: word.start,
+				end: word.end,
+			} as TranscriptionWord));
 		}
 
 		return result;
