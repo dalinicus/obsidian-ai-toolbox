@@ -1,19 +1,25 @@
-# Obsidian community plugin
+# AI Toolbox Obsidian plugin
+
+## Agent instructions
+
+- Run builds (`npm run build`) to verify your changes compile correctly.
+- Only run linting (`eslint ./src/`) when preparing for a pull request.
 
 ## Project overview
 
+- **Plugin**: AI Toolbox - A personal collection of AI tools to enhance Obsidian workflows.
+- **Core features**: AI-powered transcription and configurable chat workflows with multiple AI providers.
 - Target: Obsidian Community Plugin (TypeScript → bundled JavaScript).
-- Entry point: `main.ts` compiled to `main.js` and loaded by Obsidian.
+- Entry point: `src/main.ts` compiled to `main.js` and loaded by Obsidian.
 - Required release artifacts: `main.js`, `manifest.json`, and optional `styles.css`.
+- Desktop only (`isDesktopOnly: true`) due to external tool dependencies (yt-dlp, ffmpeg).
 
 ## Environment & tooling
 
 - Node.js: use current LTS (Node 18+ recommended).
-- **Package manager: npm** (required for this sample - `package.json` defines npm scripts and dependencies).
-- **Bundler: esbuild** (required for this sample - `esbuild.config.mjs` and build scripts depend on it). Alternative bundlers like Rollup or webpack are acceptable for other projects if they bundle all external dependencies into `main.js`.
+- **Package manager: npm** (`package.json` defines npm scripts and dependencies).
+- **Bundler: esbuild** (`esbuild.config.mjs` and build scripts depend on it).
 - Types: `obsidian` type definitions.
-
-**Note**: This sample project has specific technical dependencies on npm and esbuild. If you're creating a plugin from scratch, you can choose different tools, but you'll need to replace the build configuration accordingly.
 
 ### Install
 
@@ -47,18 +53,35 @@ npm run build
 - **Example file structure**:
   ```
   src/
-    main.ts           # Plugin entry point, lifecycle management
-    settings.ts       # Settings interface and defaults
-    commands/         # Command implementations
-      command1.ts
-      command2.ts
-    ui/              # UI components, modals, views
-      modal.ts
-      view.ts
-    utils/           # Utility functions, helpers
-      helpers.ts
-      constants.ts
-    types.ts         # TypeScript interfaces and types
+    main.ts              # Plugin entry point, lifecycle management
+    settings/            # Settings interfaces, types, and UI
+      index.ts           # Settings tab (Providers, Workflows, Settings tabs)
+      types.ts           # All type definitions and defaults
+      providers.ts       # Provider settings UI
+      workflows.ts       # Workflow settings UI
+      additional-settings.ts  # Additional settings UI
+    providers/           # AI model provider implementations
+      index.ts           # Re-exports
+      types.ts           # Provider interfaces (ModelProvider, etc.)
+      provider-factory.ts    # Factory for creating providers
+      base-provider.ts       # Base provider class
+      openai-provider.ts     # OpenAI implementation
+      azure-openai-provider.ts  # Azure OpenAI implementation
+    handlers/            # Input and output handlers
+      input/             # Input handlers for acquiring media
+      output/            # Output handlers for presenting results
+      context/           # Context handling utilities
+    processing/          # Audio/video processing and workflow execution
+      workflow-executor.ts   # Main workflow execution logic
+      audio-processor.ts     # Audio file processing
+      video-processor.ts     # Video extraction (yt-dlp)
+      workflow-chaining.ts   # Workflow chaining logic
+    components/          # UI components
+      collapsible-section.ts
+      workflow-suggester.ts
+      workflow-type-modal.ts
+    tokens/              # Token/template processing
+    utils/               # Utility functions
   ```
 - **Do not commit build artifacts**: Never commit `node_modules/`, `main.js`, or other generated files to version control.
 - Keep the plugin small. Avoid large dependencies. Prefer browser-compatible packages.
@@ -151,6 +174,7 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Provide defaults and validation in settings.
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
+- When refreshing collapsible settings sections, preserve the expand state by setting `callbacks.setExpandState({ workflowId: workflow.id })` before calling `callbacks.refresh()` if the section is currently expanded.
 
 **Don't**
 - Introduce network calls without an obvious user-facing reason and documentation.
@@ -232,6 +256,80 @@ async onload() {
 this.registerEvent(this.app.workspace.on("file-open", f => { /* ... */ }));
 this.registerDomEvent(window, "resize", () => { /* ... */ });
 this.registerInterval(window.setInterval(() => { /* ... */ }, 1000));
+```
+
+## Handler architecture
+
+The plugin uses a handler-based architecture to separate concerns for workflow execution:
+
+### Input handlers (`src/handlers/input/`)
+
+Input handlers acquire media for transcription workflows. Each handler implements the `InputHandler` interface:
+
+```ts
+interface InputHandler {
+  getInput(context: InputContext): Promise<InputResult | null>;
+}
+```
+
+**Available input handlers:**
+- `VaultFileInputHandler` - Prompts user to select an audio file from the vault
+- `ClipboardUrlInputHandler` - Extracts audio from a video URL in the clipboard (uses yt-dlp)
+- `SelectionUrlInputHandler` - Extracts audio from a video URL in the current text selection
+
+**InputResult structure:**
+```ts
+interface InputResult {
+  audioFilePath: string;      // Absolute path to the audio file
+  sourceUrl?: string;         // Source URL if extracted from video
+  metadata?: VideoMetadata;   // Title, uploader, description, tags
+}
+```
+
+### Output handlers (`src/handlers/output/`)
+
+Output handlers present workflow results to the user. Each handler implements the `OutputHandler` interface:
+
+```ts
+interface OutputHandler {
+  handleOutput(responseText: string, context: OutputContext): Promise<void>;
+}
+```
+
+**Available output handlers:**
+- `PopupOutputHandler` - Displays result in a modal popup
+- `NewNoteOutputHandler` - Creates a new note with the result
+- `AtCursorOutputHandler` - Inserts result at the current cursor position
+
+### Naming conventions
+
+- Input handler classes end with `InputHandler` (e.g., `VaultFileInputHandler`)
+- Output handler classes end with `OutputHandler` (e.g., `PopupOutputHandler`)
+- Handler files use kebab-case matching the class name (e.g., `vault-file-input-handler.ts`)
+
+### Extending the handler system
+
+**To add a new input handler:**
+1. Create a new file in `src/handlers/input/` (e.g., `my-custom-input-handler.ts`)
+2. Implement the `InputHandler` interface
+3. Export from `src/handlers/input/index.ts`
+4. Add the new source type to `TranscriptionSourceType` in `src/settings/types.ts`
+5. Update `createInputHandler()` in `src/processing/workflow-executor.ts`
+
+**To add a new output handler:**
+1. Create a new file in `src/handlers/output/` (e.g., `my-custom-output-handler.ts`)
+2. Implement the `OutputHandler` interface
+3. Export from `src/handlers/output/index.ts`
+4. Add the new output type to `WorkflowOutputType` in `src/settings/types.ts`
+5. Update `createOutputHandler()` in `src/processing/workflow-executor.ts`
+
+### Workflow execution flow
+
+```
+┌─────────────────┐     ┌───────────────┐     ┌────────────────┐     ┌────────────────┐
+│ User triggers   │ ──▶ │ Input Handler │ ──▶ │ AI Provider    │ ──▶ │ Output Handler │
+│ workflow        │     │ (get media)   │     │ (transcribe)   │     │ (show result)  │
+└─────────────────┘     └───────────────┘     └────────────────┘     └────────────────┘
 ```
 
 ## Troubleshooting

@@ -1,4 +1,4 @@
-import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT } from '../settings';
+import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, WorkflowConfig, ProviderModelSelection } from '../settings/index';
 import { ModelProvider, ModelProviderConfig } from './types';
 import { AzureOpenAIModelProvider } from './azure-openai-provider';
 import { OpenAIModelProvider } from './openai-provider';
@@ -55,18 +55,14 @@ export function createModelProvider(config: ModelProviderConfig): ModelProvider 
 }
 
 /**
- * Create a transcription provider from settings.
- * 
+ * Create a provider from a ProviderModelSelection.
+ *
  * @param settings - Plugin settings containing provider configuration
- * @returns A configured ModelProvider for transcription, or null if not configured
+ * @param selection - The provider/model selection
+ * @returns A configured ModelProvider, or null if not found
  * @throws ProviderCreationError if the provider cannot be created
  */
-export function createTranscriptionProvider(settings: AIToolboxSettings): ModelProvider | null {
-	const selection = settings.transcriptionProvider;
-	if (!selection) {
-		return null;
-	}
-
+function createProviderFromSelection(settings: AIToolboxSettings, selection: ProviderModelSelection): ModelProvider | null {
 	const provider = settings.providers.find(p => p.id === selection.providerId);
 	if (!provider) {
 		return null;
@@ -79,4 +75,20 @@ export function createTranscriptionProvider(settings: AIToolboxSettings): ModelP
 
 	const config = buildProviderConfig(provider, model);
 	return createModelProvider(config);
+}
+
+/**
+ * Create a provider for a specific workflow configuration.
+ *
+ * @param settings - Plugin settings containing provider configuration
+ * @param workflow - The workflow configuration to create a provider for
+ * @returns A configured ModelProvider for the workflow, or null if not configured
+ * @throws ProviderCreationError if the provider cannot be created
+ */
+export function createWorkflowProvider(settings: AIToolboxSettings, workflow: WorkflowConfig): ModelProvider | null {
+	if (!workflow.provider) {
+		return null;
+	}
+
+	return createProviderFromSelection(settings, workflow.provider);
 }
