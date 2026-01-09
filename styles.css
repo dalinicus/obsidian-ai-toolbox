@@ -499,6 +499,34 @@ button.mod-success:hover {
 	border-top: 1px solid rgba(100, 200, 100, 0.15);
 }
 
+.available-tokens-group-header.is-clickable {
+	cursor: pointer;
+	transition: color 0.15s ease;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.available-tokens-group-header.is-clickable:hover {
+	color: var(--text-normal);
+}
+
+.available-tokens-copy-icon {
+	opacity: 0.5;
+	transition: opacity 0.15s ease;
+	display: flex;
+	align-items: center;
+}
+
+.available-tokens-copy-icon svg {
+	width: 12px;
+	height: 12px;
+}
+
+.available-tokens-group-header.is-clickable:hover .available-tokens-copy-icon {
+	opacity: 1;
+}
+
 .theme-dark .available-tokens-group-header {
 	border-top-color: rgba(100, 200, 100, 0.1);
 }

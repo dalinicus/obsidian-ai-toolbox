@@ -42,27 +42,43 @@ export interface TranscriptionWorkflowTokens {
 	sourceUrl: string;
 	/** The video description */
 	description: string;
+	/** The video tags (comma-separated) */
+	tags: string;
 }
 
 /**
- * Token definitions for chat workflows
+ * Token definitions for chat workflows (ordered for template generation)
  */
 export const CHAT_WORKFLOW_TOKENS: TokenDefinition[] = [
-	{ name: 'response', description: 'The AI response text' },
 	{ name: 'prompt', description: 'The original prompt text' },
-	{ name: 'timestamp', description: 'When the workflow was executed' }
+	{ name: 'response', description: 'The AI response text' }
 ];
 
 /**
- * Token definitions for transcription workflows
+ * Token definitions for transcription workflows (ordered for template generation)
  */
 export const TRANSCRIPTION_WORKFLOW_TOKENS: TokenDefinition[] = [
-	{ name: 'author', description: 'The author/uploader of the video' },
 	{ name: 'title', description: 'The title of the video' },
-	{ name: 'transcription', description: 'The full transcription text' },
+	{ name: 'author', description: 'The author/uploader of the video' },
 	{ name: 'sourceUrl', description: 'The original video URL' },
-	{ name: 'description', description: 'The video description' }
+	{ name: 'description', description: 'The video description' },
+	{ name: 'tags', description: 'The video tags (comma-separated)' },
+	{ name: 'transcription', description: 'The full transcription text' }
 ];
+
+/**
+ * Human-readable labels for token names (used in template generation)
+ */
+const TOKEN_LABELS: Record<string, string> = {
+	prompt: 'Prompt',
+	response: 'Response',
+	title: 'Title',
+	author: 'Author',
+	sourceUrl: 'Source URL',
+	description: 'Description',
+	tags: 'Tags',
+	transcription: 'Transcription'
+};
 
 /**
  * Get token definitions for a workflow type
@@ -90,5 +106,26 @@ export function getWorkflowContextTokens(
 		name: `${workflowId}.${token.name}`,
 		description: token.description
 	}));
+}
+
+/**
+ * Generate a formatted template string containing all tokens for a workflow.
+ * Used for copying a complete set of token references to the clipboard.
+ *
+ * @param workflowId - The ID of the workflow
+ * @param workflowType - The type of the workflow (chat or transcription)
+ */
+export function generateWorkflowTokenTemplate(
+	workflowId: string,
+	workflowType: WorkflowType
+): string {
+	const tokens = getTokenDefinitionsForType(workflowType);
+
+	return tokens
+		.map(token => {
+			const label = TOKEN_LABELS[token.name] || token.name;
+			return `- ${label}: {{${workflowId}.${token.name}}}`;
+		})
+		.join('\n');
 }
 

@@ -1,4 +1,4 @@
-import { Notice, Setting } from "obsidian";
+import { Notice, setIcon, Setting } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
@@ -15,7 +15,7 @@ import {
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
 import { WorkflowTypeModal } from "../components/workflow-type-modal";
-import { TokenDefinition, getWorkflowContextTokens } from "../tokens";
+import { TokenDefinition, getWorkflowContextTokens, generateWorkflowTokenTemplate } from "../tokens";
 import {
 	CHAT_CONTEXT_TYPE_LABELS,
 	CHAT_CONTEXT_TYPE_DESCRIPTIONS,
@@ -715,6 +715,10 @@ function displayWorkflowContextSection(
 interface TokenGroup {
 	name: string;
 	tokens: TokenDefinition[];
+	/** For workflow groups: the source workflow ID */
+	workflowId?: string;
+	/** For workflow groups: the source workflow type */
+	workflowType?: WorkflowType;
 }
 
 /**
@@ -783,14 +787,17 @@ function displayAvailableTokensSection(
 		const sourceWorkflow = plugin.settings.workflows.find(w => w.id === workflowContext.workflowId);
 		if (!sourceWorkflow) continue;
 
+		const workflowType = sourceWorkflow.type || 'chat';
 		const workflowTokens = getWorkflowContextTokens(
 			sourceWorkflow.id,
-			sourceWorkflow.type || 'chat'
+			workflowType
 		);
 		if (workflowTokens.length > 0) {
 			tokenGroups.push({
 				name: sourceWorkflow.name || 'Unnamed workflow',
-				tokens: workflowTokens
+				tokens: workflowTokens,
+				workflowId: sourceWorkflow.id,
+				workflowType: workflowType
 			});
 			totalTokenCount += workflowTokens.length;
 		}
@@ -825,7 +832,25 @@ function displayAvailableTokensSection(
 		const groupContainer = content.createDiv('available-tokens-group');
 
 		const groupHeader = groupContainer.createDiv('available-tokens-group-header');
-		groupHeader.textContent = group.name;
+
+		// Make workflow group headers clickable to copy full template
+		if (group.workflowId && group.workflowType) {
+			groupHeader.createSpan({ text: group.name });
+			const copyIcon = groupHeader.createSpan({ cls: 'available-tokens-copy-icon' });
+			setIcon(copyIcon, 'copy');
+			groupHeader.addClass('is-clickable');
+			groupHeader.setAttribute('title', 'Click to copy all tokens as template');
+			const workflowId = group.workflowId;
+			const workflowType = group.workflowType;
+			groupHeader.addEventListener('click', async (e) => {
+				e.stopPropagation();
+				const template = generateWorkflowTokenTemplate(workflowId, workflowType);
+				await navigator.clipboard.writeText(template);
+				new Notice('Copied token template to clipboard');
+			});
+		} else {
+			groupHeader.textContent = group.name;
+		}
 
 		const tokenList = groupContainer.createEl('ul', { cls: 'available-tokens-list' });
 		for (const token of group.tokens) {
