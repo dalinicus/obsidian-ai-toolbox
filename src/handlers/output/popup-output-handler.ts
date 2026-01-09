@@ -28,9 +28,10 @@ export class WorkflowResultModal extends Modal {
         // Add copy button
         const buttonContainer = contentEl.createDiv('workflow-response-buttons');
         const copyButton = buttonContainer.createEl('button', { text: 'Copy to clipboard' });
-        copyButton.addEventListener('click', async () => {
-            await navigator.clipboard.writeText(this.response);
-            new Notice('Response copied to clipboard');
+        copyButton.addEventListener('click', () => {
+            void navigator.clipboard.writeText(this.response).then(() => {
+                new Notice('Response copied to clipboard');
+            });
         });
 
         const closeButton = buttonContainer.createEl('button', { text: 'Close' });

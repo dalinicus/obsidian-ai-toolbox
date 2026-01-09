@@ -1,4 +1,4 @@
-import { App, Notice } from 'obsidian';
+import { App } from 'obsidian';
 import { WorkflowConfig, AIToolboxSettings } from '../settings';
 
 /**
@@ -88,7 +88,7 @@ export function replaceWorkflowTokens(
     // Match tokens like {{workflowId.tokenName}}
     const tokenPattern = /\{\{([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_]+)\}\}/g;
 
-    return promptText.replace(tokenPattern, (match, workflowId, tokenName) => {
+    return promptText.replace(tokenPattern, (match, workflowId: string, tokenName: string) => {
         const result = results.get(workflowId);
         if (!result) {
             // Workflow not executed or not found - leave token as-is

@@ -66,7 +66,7 @@ export function displayWorkflowsSettings(
 			.setCta()
 			.onClick(() => {
 				// Show modal to select workflow type
-				const modal = new WorkflowTypeModal(plugin.app, async (type: WorkflowType) => {
+				const modal = new WorkflowTypeModal(plugin.app, (type: WorkflowType) => {
 					const newWorkflow: WorkflowConfig = {
 						id: generateId(),
 						...DEFAULT_WORKFLOW_CONFIG,
@@ -75,8 +75,7 @@ export function displayWorkflowsSettings(
 					plugin.settings.workflows.push(newWorkflow);
 					// Expand the newly created workflow
 					callbacks.setExpandState({ workflowId: newWorkflow.id });
-					await plugin.saveSettings();
-					callbacks.refresh();
+					void plugin.saveSettings().then(() => callbacks.refresh());
 				});
 				modal.open();
 			}));
@@ -237,10 +236,10 @@ function displayChatWorkflowSettings(
 				callbacks.refresh();
 			}));
 
-	// List in Workload Command toggle
+	// List in Workflow Command toggle
 	new Setting(contentContainer)
-		.setName('List in "Run Workflow" Command')
-		.setDesc('Show this workflow in the list when running the "Run Workflow" command')
+		.setName('List in run workflow command')
+		.setDesc('Show this workflow in the list when running the run workflow command')
 		.addToggle(toggle => toggle
 			.setValue(workflow.showInCommand ?? true)
 			.onChange(async (value) => {
@@ -466,8 +465,8 @@ function displayTranscriptionWorkflowSettings(
 
 	// List in Workflow Command toggle
 	new Setting(contentContainer)
-		.setName('List in "Run Workflow" Command')
-		.setDesc('Show this workflow in the list when running the "Run Workflow" command')
+		.setName('List in run workflow command')
+		.setDesc('Show this workflow in the list when running the run workflow command')
 		.addToggle(toggle => toggle
 			.setValue(workflow.showInCommand ?? true)
 			.onChange(async (value) => {
@@ -692,19 +691,20 @@ function displayWorkflowContextSection(
 		const deleteButton = itemContainer.createEl('button', { cls: 'workflow-context-delete-button' });
 		deleteButton.textContent = '×';
 		deleteButton.setAttribute('aria-label', `Remove ${selectedWorkflow.name}`);
-		deleteButton.addEventListener('click', async () => {
+		deleteButton.addEventListener('click', () => {
 			workflow.workflowContexts = workflow.workflowContexts?.filter(
 				wc => wc.workflowId !== workflowContext.workflowId
 			);
-			await plugin.saveSettings();
 
-			if (isExpanded()) {
-				// Check if available tokens section is expanded before refreshing
-				const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
-				const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
-				callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
-			}
-			callbacks.refresh();
+			void plugin.saveSettings().then(() => {
+				if (isExpanded()) {
+					// Check if available tokens section is expanded before refreshing
+					const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
+					const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
+					callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
+				}
+				callbacks.refresh();
+			});
 		});
 	}
 }
@@ -734,10 +734,11 @@ function renderTokenReference(
 	const tokenRef = listItem.createEl('code', { cls: 'available-tokens-reference' });
 	tokenRef.textContent = tokenText;
 	tokenRef.setAttribute('title', 'Click to copy');
-	tokenRef.addEventListener('click', async (e) => {
+	tokenRef.addEventListener('click', (e) => {
 		e.stopPropagation();
-		await navigator.clipboard.writeText(tokenText);
-		new Notice(`Copied ${tokenText}`);
+		void navigator.clipboard.writeText(tokenText).then(() => {
+			new Notice(`Copied ${tokenText}`);
+		});
 	});
 
 	const tokenDesc = listItem.createSpan('available-tokens-description');
@@ -825,7 +826,7 @@ function displayAvailableTokensSection(
 	const content = sectionContainer.createDiv(contentClasses);
 
 	const description = content.createDiv('available-tokens-description-text');
-	description.textContent = 'Tokens available for use in prompts and output templates';
+	description.textContent = 'These tokens available for use in prompts and output templates downstream.';
 
 	// Render each token group
 	for (const group of tokenGroups) {
@@ -842,11 +843,12 @@ function displayAvailableTokensSection(
 			groupHeader.setAttribute('title', 'Click to copy all tokens as template');
 			const workflowId = group.workflowId;
 			const workflowType = group.workflowType;
-			groupHeader.addEventListener('click', async (e) => {
+			groupHeader.addEventListener('click', (e) => {
 				e.stopPropagation();
 				const template = generateWorkflowTokenTemplate(workflowId, workflowType);
-				await navigator.clipboard.writeText(template);
-				new Notice('Copied token template to clipboard');
+				void navigator.clipboard.writeText(template).then(() => {
+					new Notice('Copied token template to clipboard');
+				});
 			});
 		} else {
 			groupHeader.textContent = group.name;

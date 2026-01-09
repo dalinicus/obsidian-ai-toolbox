@@ -600,3 +600,33 @@ button.mod-success:hover {
 	background-color: var(--background-modifier-error);
 	color: var(--text-on-accent);
 }
+
+/* Additional settings styles */
+.additional-settings-toggle {
+	justify-content: flex-end;
+}
+
+.additional-settings-toggle .setting-item-name {
+	display: none;
+}
+
+.additional-settings-toggle-label {
+	font-size: 0.85em;
+	margin-right: 8px;
+}
+
+.additional-settings-heading .setting-item-name {
+	font-size: 1.17em;
+}
+
+.additional-settings-advanced-hidden {
+	display: none;
+}
+
+.additional-settings-advanced-label-active {
+	color: var(--text-warning);
+}
+
+.additional-settings-advanced-name {
+	color: var(--text-warning);
+}

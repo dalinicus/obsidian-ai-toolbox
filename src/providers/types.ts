@@ -1,4 +1,8 @@
 import { AIProviderType } from '../settings';
+import { TestAudioData } from '../processing/audio-processor';
+
+// Re-export TestAudioData for consumers of this module
+export type { TestAudioData };
 
 /**
  * Options for audio transcription
@@ -23,14 +27,6 @@ export interface TranscriptionResult {
 	text: string;
 	chunks?: TranscriptionChunk[];
 	audioFilePath: string;
-}
-
-/**
- * Test audio data for transcription testing
- */
-export interface TestAudioData {
-	audioBuffer: Buffer;
-	fileName: string;
 }
 
 /**

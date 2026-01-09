@@ -23,7 +23,7 @@ export interface CollapsibleSectionConfig {
 	/** Optional secondary text to display in the header (e.g., ID) */
 	secondaryText?: string;
 	/** Callback when the delete button is clicked (if provided, delete button is shown) */
-	onDelete?: () => void;
+	onDelete?: () => void | Promise<void>;
 	/** Callback when the title changes (for dynamic name updates) */
 	onTitleChange?: (newTitle: string) => void;
 }
@@ -105,7 +105,7 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		headerSetting.addButton(button => button
 			.setIcon('trash')
 			.setTooltip('Delete')
-			.onClick(onDelete));
+			.onClick(() => { void onDelete(); }));
 	}
 
 	headerSetting.settingEl.addClass(headerClass);

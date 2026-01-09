@@ -12,7 +12,7 @@ export default class AIToolboxPlugin extends Plugin {
 		// Add command to execute custom workflows
 		this.addCommand({
 			id: 'execute-workflow',
-			name: 'Run Workflow',
+			name: 'Run workflow',
 			callback: () => this.showWorkflowSuggester()
 		});
 
@@ -27,7 +27,7 @@ export default class AIToolboxPlugin extends Plugin {
 		const availableWorkflows = this.settings.workflows.filter(w => w.showInCommand);
 
 		if (availableWorkflows.length === 0) {
-			new Notice('No workflows available. You can configure workloads from the "Workflows" tab in settings.');
+			new Notice('No workflows available. You can configure workflows from the workflows tab in settings.');
 			return;
 		}
 

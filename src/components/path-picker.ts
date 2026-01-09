@@ -307,7 +307,7 @@ function createFolderFilePicker(options: FolderFilePickerOptions): FolderFilePic
             fileSearch.inputEl.dataset.fullPath = initialFilePath;
 
             // Listen for file selection (custom event with full path)
-            fileSearch.inputEl.addEventListener("file-selected", ((e: CustomEvent) => {
+            fileSearch.inputEl.addEventListener("file-selected", ((e: CustomEvent<{ path: string }>) => {
                 onFileChange?.(e.detail.path);
             }) as EventListener);
 

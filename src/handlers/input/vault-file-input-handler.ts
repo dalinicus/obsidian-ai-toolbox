@@ -63,8 +63,7 @@ export class VaultFileInputHandler implements InputHandler {
                 }
 
                 // Get the absolute path to the audio file
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const adapter = context.app.vault.adapter as any;
+                const adapter = context.app.vault.adapter as unknown as { basePath: string };
                 const audioFilePath = path.join(adapter.basePath, file.path);
 
                 resolve({

@@ -14,34 +14,33 @@ export interface AdditionalSettingsCallbacks {
 export function displayAdditionalSettings(
 	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
-	callbacks: AdditionalSettingsCallbacks
+	_callbacks: AdditionalSettingsCallbacks
 ): void {
 	let showAdvanced = false;
 
-	const advancedColor = 'var(--text-warning)';
 	const advancedToggleSetting = new Setting(containerEl)
 		.addToggle(toggle => toggle
 			.setValue(showAdvanced)
 			.onChange((value) => {
 				showAdvanced = value;
-				ytdlpPathSetting.settingEl.style.display = value ? '' : 'none';
-				ffmpegPathSetting.settingEl.style.display = value ? '' : 'none';
-				advancedLabel.style.color = value ? advancedColor : '';
-				ytdlpPathSetting.nameEl.style.color = advancedColor;
-				ffmpegPathSetting.nameEl.style.color = advancedColor;
+				ytdlpPathSetting.settingEl.toggleClass('additional-settings-advanced-hidden', !value);
+				ffmpegPathSetting.settingEl.toggleClass('additional-settings-advanced-hidden', !value);
+				advancedLabel.toggleClass('additional-settings-advanced-label-active', value);
+				ytdlpPathSetting.nameEl.addClass('additional-settings-advanced-name');
+				ffmpegPathSetting.nameEl.addClass('additional-settings-advanced-name');
 			}));
-	advancedToggleSetting.settingEl.style.justifyContent = 'flex-end';
-	advancedToggleSetting.nameEl.style.display = 'none';
-	const advancedLabel = advancedToggleSetting.controlEl.createSpan({ text: 'Show advanced settings' });
-	advancedLabel.style.fontSize = '0.85em';
-	advancedLabel.style.marginRight = '8px';
+	advancedToggleSetting.settingEl.addClass('additional-settings-toggle');
+	const advancedLabel = advancedToggleSetting.controlEl.createSpan({
+		text: 'Show advanced settings',
+		cls: 'additional-settings-toggle-label'
+	});
 	advancedToggleSetting.controlEl.prepend(advancedLabel);
 
 	// yt-dlp section header
 	const ytdlpHeading = new Setting(containerEl)
-		.setName('yt-dlp')
+		.setName('yt-dlp') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
 		.setHeading();
-	ytdlpHeading.nameEl.style.fontSize = '1.17em';
+	ytdlpHeading.settingEl.addClass('additional-settings-heading');
 
 	new Setting(containerEl)
 		.setName('Browser to impersonate')
@@ -68,7 +67,7 @@ export function displayAdditionalSettings(
 				plugin.settings.ytdlpLocation = value;
 				await plugin.saveSettings();
 			}));
-	ytdlpPathSetting.settingEl.style.display = 'none';
+	ytdlpPathSetting.settingEl.addClass('additional-settings-advanced-hidden');
 
 	const ffmpegPathSetting = new Setting(containerEl)
 		.setName('FFmpeg path') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
@@ -79,6 +78,6 @@ export function displayAdditionalSettings(
 				plugin.settings.ffmpegLocation = value;
 				await plugin.saveSettings();
 			}));
-	ffmpegPathSetting.settingEl.style.display = 'none';
+	ffmpegPathSetting.settingEl.addClass('additional-settings-advanced-hidden');
 }
 

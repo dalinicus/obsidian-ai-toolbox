@@ -346,11 +346,11 @@ function displayModelSettings(
 			}));
 
 	// Test button - declare early so it can be referenced in field change handlers
-	let testButton: ButtonComponent;
+	let testButton: ButtonComponent | null = null;
 	let testButtonState: TestButtonState = 'ready';
 
 	const updateTestButton = () => {
-		if (!testButton) return;
+		if (testButton === null) return;
 
 		const isConfigComplete = isModelConfigComplete(provider, model);
 		testButton.setDisabled(!isConfigComplete || testButtonState === 'testing');
@@ -375,12 +375,12 @@ function displayModelSettings(
 				testButton.buttonEl.removeClass('mod-warning', 'mod-success');
 				break;
 			case 'success':
-				testButton.setButtonText('✓ Success');
+				testButton.setButtonText('✓ passed');
 				testButton.buttonEl.removeClass('mod-warning');
 				testButton.buttonEl.addClass('mod-success');
 				break;
 			case 'error':
-				testButton.setButtonText('✗ Failed');
+				testButton.setButtonText('✗ error');
 				testButton.buttonEl.removeClass('mod-success');
 				testButton.buttonEl.addClass('mod-warning');
 				break;
@@ -464,11 +464,11 @@ function displayModelSettings(
 				// Update state based on result
 				if (result.success) {
 					testButtonState = 'success';
-					new Notice('✓ Model test successful');
+					new Notice('✓ test passed');
 				} else {
 					testButtonState = 'error';
 					// Show error as Notice and log to console
-					new Notice(`✗ Model test failed: ${result.error}`, 5000);
+					new Notice(`✗ test failed: ${result.error}`, 5000);
 					console.error('Model test failed:', result.error);
 				}
 				updateTestButton();

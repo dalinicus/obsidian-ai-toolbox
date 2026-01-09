@@ -33,8 +33,10 @@ export function createContextHandler(contextType: ChatContextType): ContextHandl
             return new ActiveTabContextHandler();
         case 'clipboard':
             return new ClipboardContextHandler();
-        default:
-            throw new Error(`Unknown context type: ${contextType}`);
+        default: {
+            const exhaustiveCheck: never = contextType;
+            throw new Error(`Unknown context type: ${exhaustiveCheck as string}`);
+        }
     }
 }
 

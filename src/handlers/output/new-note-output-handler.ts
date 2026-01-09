@@ -19,9 +19,8 @@ export class NewNoteOutputHandler implements OutputHandler {
             folderPath = workflow.outputFolder.trim().replace(/\/$/, '');
         } else {
             // Get the default new note location from Obsidian's vault config
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const vault = app.vault as any;
-            const newFileFolderPath = vault.getConfig?.('newFileFolderPath') as string | undefined;
+            const vault = app.vault as { getConfig?: (key: string) => string | undefined };
+            const newFileFolderPath = vault.getConfig?.('newFileFolderPath');
             if (newFileFolderPath && newFileFolderPath.trim() !== '') {
                 folderPath = newFileFolderPath.replace(/\/$/, '');
             }
@@ -54,7 +53,9 @@ export class NewNoteOutputHandler implements OutputHandler {
 
         // Open the newly created note
         const leaf = app.workspace.getLeaf(false);
-        await leaf.openFile(file as TFile);
+        if (file instanceof TFile) {
+            await leaf.openFile(file);
+        }
 
         new Notice(`Created note: ${file.name}`);
     }
