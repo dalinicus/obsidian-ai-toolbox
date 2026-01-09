@@ -7,6 +7,7 @@ import {
 	PromptSourceType,
 	TranscriptionMediaType,
 	TranscriptionSourceType,
+	ChatContextType,
 	ExpandOnNextRenderState,
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG
@@ -14,6 +15,13 @@ import {
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
 import { WorkflowTypeModal } from "../components/workflow-type-modal";
+import { TokenDefinition } from "../tokens";
+import {
+	CHAT_CONTEXT_TYPE_LABELS,
+	CHAT_CONTEXT_TYPE_DESCRIPTIONS,
+	createContextHandler,
+	getAvailableContextTypes
+} from "../handlers";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -149,6 +157,9 @@ function displayChatWorkflowSettings(
 ): void {
 	// Provider/Model selection (only models that support chat)
 	displayWorkflowProviderSelection(contentContainer, plugin, workflow);
+
+	// Context section
+	displayContextSection(contentContainer, plugin, workflow, callbacks, isExpanded);
 
 	// Prompt source type dropdown
 	const promptSourceType = workflow.promptSourceType ?? 'inline';
@@ -506,3 +517,142 @@ function displayTranscriptionWorkflowSettings(
 	}
 }
 
+/**
+ * Display context section for chat workflows
+ */
+function displayContextSection(
+	contentContainer: HTMLElement,
+	plugin: AIToolboxPlugin,
+	workflow: WorkflowConfig,
+	callbacks: WorkflowSettingsCallbacks,
+	isExpanded: () => boolean
+): void {
+	// Ensure contexts array exists
+	if (!workflow.contexts) {
+		workflow.contexts = [];
+	}
+
+	// Helper to check if a context type is enabled
+	const isContextEnabled = (type: ChatContextType): boolean => {
+		return workflow.contexts?.some(c => c.type === type) ?? false;
+	};
+
+	// Helper to toggle a context type
+	const toggleContext = async (type: ChatContextType, enabled: boolean): Promise<void> => {
+		if (!workflow.contexts) {
+			workflow.contexts = [];
+		}
+
+		if (enabled) {
+			// Add context if not already present
+			if (!workflow.contexts.some(c => c.type === type)) {
+				workflow.contexts.push({
+					id: generateId(),
+					type
+				});
+			}
+		} else {
+			// Remove context
+			workflow.contexts = workflow.contexts.filter(c => c.type !== type);
+		}
+
+		await plugin.saveSettings();
+
+		// Refresh to update the available tokens section
+		if (isExpanded()) {
+			callbacks.setExpandState({ workflowId: workflow.id });
+		}
+		callbacks.refresh();
+	};
+
+	// Context section container
+	const contextSection = contentContainer.createDiv('context-section');
+
+	// Section header
+	contextSection.createDiv({ text: 'Context', cls: 'context-section-title' });
+
+	// Toggles row
+	const togglesRow = contextSection.createDiv('context-toggles-row');
+
+	// Add labeled toggle for each context type
+	const availableTypes = getAvailableContextTypes();
+	for (const contextType of availableTypes) {
+		const toggleContainer = togglesRow.createDiv('context-toggle-container');
+		toggleContainer.setAttribute('aria-label', CHAT_CONTEXT_TYPE_DESCRIPTIONS[contextType]);
+
+		const label = toggleContainer.createSpan('context-toggle-label');
+		label.textContent = CHAT_CONTEXT_TYPE_LABELS[contextType];
+
+		const toggleWrapper = toggleContainer.createDiv('context-toggle-wrapper');
+		new Setting(toggleWrapper)
+			.addToggle(toggle => toggle
+				.setValue(isContextEnabled(contextType))
+				.onChange(async (value) => {
+					await toggleContext(contextType, value);
+				}));
+	}
+
+	// Available tokens section (inside the context section)
+	displayAvailableTokensSection(contextSection, workflow);
+}
+
+/**
+ * Display the available tokens section showing tokens from all configured contexts
+ */
+function displayAvailableTokensSection(
+	containerEl: HTMLElement,
+	workflow: WorkflowConfig
+): void {
+	const contexts = workflow.contexts ?? [];
+
+	if (contexts.length === 0) {
+		return;
+	}
+
+	// Collect all tokens from configured contexts
+	const allTokens: TokenDefinition[] = [];
+	for (const context of contexts) {
+		const handler = createContextHandler(context.type);
+		const tokens = handler.getAvailableTokens();
+		allTokens.push(...tokens);
+	}
+
+	if (allTokens.length === 0) {
+		return;
+	}
+
+	// Create collapsible available tokens section
+	const sectionContainer = containerEl.createDiv('available-tokens-section');
+
+	const header = sectionContainer.createDiv('available-tokens-header');
+	const headerArrow = header.createSpan('available-tokens-arrow');
+	headerArrow.textContent = '▸';
+
+	const headerTitle = header.createSpan('available-tokens-title');
+	headerTitle.textContent = `Available tokens (${allTokens.length})`;
+
+	const content = sectionContainer.createDiv('available-tokens-content is-collapsed');
+
+	const description = content.createDiv('available-tokens-description-text');
+	description.textContent = 'Tokens available for use in prompts and output templates';
+
+	const tokenList = content.createEl('ul', { cls: 'available-tokens-list' });
+
+	for (const token of allTokens) {
+		const listItem = tokenList.createEl('li', { cls: 'available-tokens-item' });
+
+		const tokenRef = listItem.createEl('code', { cls: 'available-tokens-reference' });
+		tokenRef.textContent = `{{${token.name}}}`;
+
+		const tokenDesc = listItem.createSpan('available-tokens-description');
+		tokenDesc.textContent = ` — ${token.description}`;
+	}
+
+	// Toggle handler
+	header.addEventListener('click', () => {
+		const isCollapsed = content.classList.contains('is-collapsed');
+		content.classList.toggle('is-collapsed', !isCollapsed);
+		content.classList.toggle('is-expanded', isCollapsed);
+		headerArrow.textContent = isCollapsed ? '▾' : '▸';
+	});
+}

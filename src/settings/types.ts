@@ -74,6 +74,21 @@ export interface TranscriptionContextConfig {
 }
 
 /**
+ * Available context types for chat workflows
+ */
+export type ChatContextType = 'selection' | 'active-tab' | 'clipboard';
+
+/**
+ * Configuration for a context source in a chat workflow
+ */
+export interface ChatContextConfig {
+	/** Unique identifier for this context instance */
+	id: string;
+	/** The type of context */
+	type: ChatContextType;
+}
+
+/**
  * Configuration for a custom workflow
  */
 export interface WorkflowConfig {
@@ -89,6 +104,8 @@ export interface WorkflowConfig {
 	outputFolder: string;
 	showInCommand: boolean;
 	availableAsInput: boolean;
+	// Chat workflow context sources (optional for backward compatibility)
+	contexts?: ChatContextConfig[];
 	// Transcription-specific settings (optional for backward compatibility)
 	language?: string;
 	includeTimestamps?: boolean;
@@ -110,6 +127,7 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	outputFolder: '',
 	showInCommand: true,
 	availableAsInput: false,
+	contexts: [],
 	language: '',
 	includeTimestamps: true
 };

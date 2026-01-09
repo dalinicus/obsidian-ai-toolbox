@@ -19,6 +19,8 @@ export type {
 	TranscriptionMediaType,
 	TranscriptionSourceType,
 	TranscriptionContextConfig,
+	ChatContextType,
+	ChatContextConfig,
 	AIToolboxSettings,
 	SettingsTabType,
 	ExpandOnNextRenderState
