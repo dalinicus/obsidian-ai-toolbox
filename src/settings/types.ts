@@ -120,12 +120,8 @@ export interface AIToolboxSettings {
 	ffmpegLocation: string;
 	outputDirectory: string;
 	keepVideo: boolean;
-	includeTimestamps: boolean;
-	transcriptionLanguage: string;
-	outputFolder: string;
-	// New provider-based settings
+	// Provider-based settings
 	providers: AIProviderConfig[];
-	transcriptionProvider: ProviderModelSelection | null;
 	// Custom workflows
 	workflows: WorkflowConfig[];
 }
@@ -143,11 +139,7 @@ export const DEFAULT_SETTINGS: AIToolboxSettings = {
 	ffmpegLocation: '',
 	outputDirectory: '',
 	keepVideo: false,
-	includeTimestamps: true,
-	transcriptionLanguage: '',
-	outputFolder: '',
 	providers: [],
-	transcriptionProvider: null,
 	workflows: []
 }
 

@@ -2,7 +2,8 @@
 
 ## Agent instructions
 
-- Do not run build or lint commands unless explicitly instructed by the user.
+- Run builds (`npm run build`) to verify your changes compile correctly.
+- Only run linting (`eslint ./src/`) when preparing for a pull request.
 
 ## Project overview
 
@@ -237,6 +238,80 @@ async onload() {
 this.registerEvent(this.app.workspace.on("file-open", f => { /* ... */ }));
 this.registerDomEvent(window, "resize", () => { /* ... */ });
 this.registerInterval(window.setInterval(() => { /* ... */ }, 1000));
+```
+
+## Handler architecture
+
+The plugin uses a handler-based architecture to separate concerns for workflow execution:
+
+### Input handlers (`src/handlers/input/`)
+
+Input handlers acquire media for transcription workflows. Each handler implements the `InputHandler` interface:
+
+```ts
+interface InputHandler {
+  getInput(context: InputContext): Promise<InputResult | null>;
+}
+```
+
+**Available input handlers:**
+- `VaultFileInputHandler` - Prompts user to select an audio file from the vault
+- `ClipboardUrlInputHandler` - Extracts audio from a video URL in the clipboard (uses yt-dlp)
+- `SelectionUrlInputHandler` - Extracts audio from a video URL in the current text selection
+
+**InputResult structure:**
+```ts
+interface InputResult {
+  audioFilePath: string;      // Absolute path to the audio file
+  sourceUrl?: string;         // Source URL if extracted from video
+  metadata?: VideoMetadata;   // Title, uploader, description, tags
+}
+```
+
+### Output handlers (`src/handlers/output/`)
+
+Output handlers present workflow results to the user. Each handler implements the `OutputHandler` interface:
+
+```ts
+interface OutputHandler {
+  handleOutput(responseText: string, context: OutputContext): Promise<void>;
+}
+```
+
+**Available output handlers:**
+- `PopupOutputHandler` - Displays result in a modal popup
+- `NewNoteOutputHandler` - Creates a new note with the result
+- `AtCursorOutputHandler` - Inserts result at the current cursor position
+
+### Naming conventions
+
+- Input handler classes end with `InputHandler` (e.g., `VaultFileInputHandler`)
+- Output handler classes end with `OutputHandler` (e.g., `PopupOutputHandler`)
+- Handler files use kebab-case matching the class name (e.g., `vault-file-input-handler.ts`)
+
+### Extending the handler system
+
+**To add a new input handler:**
+1. Create a new file in `src/handlers/input/` (e.g., `my-custom-input-handler.ts`)
+2. Implement the `InputHandler` interface
+3. Export from `src/handlers/input/index.ts`
+4. Add the new source type to `TranscriptionSourceType` in `src/settings/types.ts`
+5. Update `createInputHandler()` in `src/processing/workflow-executor.ts`
+
+**To add a new output handler:**
+1. Create a new file in `src/handlers/output/` (e.g., `my-custom-output-handler.ts`)
+2. Implement the `OutputHandler` interface
+3. Export from `src/handlers/output/index.ts`
+4. Add the new output type to `WorkflowOutputType` in `src/settings/types.ts`
+5. Update `createOutputHandler()` in `src/processing/workflow-executor.ts`
+
+### Workflow execution flow
+
+```
+┌─────────────────┐     ┌───────────────┐     ┌────────────────┐     ┌────────────────┐
+│ User triggers   │ ──▶ │ Input Handler │ ──▶ │ AI Provider    │ ──▶ │ Output Handler │
+│ workflow        │     │ (get media)   │     │ (transcribe)   │     │ (show result)  │
+└─────────────────┘     └───────────────┘     └────────────────┘     └────────────────┘
 ```
 
 ## Troubleshooting

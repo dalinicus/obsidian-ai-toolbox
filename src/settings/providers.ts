@@ -207,9 +207,6 @@ function displayProviderSettings(
 			const index = plugin.settings.providers.findIndex(p => p.id === provider.id);
 			if (index !== -1) {
 				plugin.settings.providers.splice(index, 1);
-				if (plugin.settings.transcriptionProvider?.providerId === provider.id) {
-					plugin.settings.transcriptionProvider = null;
-				}
 				await plugin.saveSettings();
 				callbacks.refresh();
 			}
@@ -329,9 +326,6 @@ function displayModelSettings(
 			const index = provider.models.findIndex(m => m.id === model.id);
 			if (index !== -1) {
 				provider.models.splice(index, 1);
-				if (plugin.settings.transcriptionProvider?.modelId === model.id) {
-					plugin.settings.transcriptionProvider = null;
-				}
 				callbacks.setExpandState({ providerId: provider.id });
 				await plugin.saveSettings();
 				callbacks.refresh();

@@ -222,8 +222,8 @@ function displayChatWorkflowSettings(
 
 	// List in Workload Command toggle
 	new Setting(contentContainer)
-		.setName('List in "Run AI Workflow" Command')
-		.setDesc('Show this workflow in the list when running the "Run AI Workflow" command')
+		.setName('List in "Run Workflow" Command')
+		.setDesc('Show this workflow in the list when running the "Run Workflow" command')
 		.addToggle(toggle => toggle
 			.setValue(workflow.showInCommand ?? true)
 			.onChange(async (value) => {
@@ -431,17 +431,6 @@ function displayTranscriptionWorkflowSettings(
 				await plugin.saveSettings();
 			}));
 
-	// Include timestamps toggle
-	new Setting(contentContainer)
-		.setName('Include timestamps')
-		.setDesc('Include timestamps in the transcription output')
-		.addToggle(toggle => toggle
-			.setValue(workflow.includeTimestamps ?? true)
-			.onChange(async (value) => {
-				workflow.includeTimestamps = value;
-				await plugin.saveSettings();
-			}));
-
 	// Make available as input to other workflows toggle
 	new Setting(contentContainer)
 		.setName('Make available as input to other workflows')
@@ -455,8 +444,8 @@ function displayTranscriptionWorkflowSettings(
 
 	// List in Workflow Command toggle
 	new Setting(contentContainer)
-		.setName('List in "Run AI Workflow" Command')
-		.setDesc('Show this workflow in the list when running the "Run AI Workflow" command')
+		.setName('List in "Run Workflow" Command')
+		.setDesc('Show this workflow in the list when running the "Run Workflow" command')
 		.addToggle(toggle => toggle
 			.setValue(workflow.showInCommand ?? true)
 			.onChange(async (value) => {
@@ -485,6 +474,17 @@ function displayTranscriptionWorkflowSettings(
 						callbacks.setExpandState({ workflowId: workflow.id });
 					}
 					callbacks.refresh();
+				}));
+
+		// Include timestamps toggle
+		new Setting(contentContainer)
+			.setName('Include timestamps')
+			.setDesc('Include timestamps in the transcription output')
+			.addToggle(toggle => toggle
+				.setValue(workflow.includeTimestamps ?? true)
+				.onChange(async (value) => {
+					workflow.includeTimestamps = value;
+					await plugin.saveSettings();
 				}));
 
 		// Output folder (only show if output type is new-note)

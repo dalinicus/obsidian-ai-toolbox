@@ -211,6 +211,60 @@ function settingsToProcessorConfig(settings: AIToolboxSettings): VideoProcessorC
 }
 
 /**
+ * Downloads audio from a video URL for transcription.
+ * Supports TikTok, YouTube, and other platforms supported by yt-dlp.
+ * Uses yt-dlp directly via child_process for audio extraction.
+ * Requires yt-dlp and ffmpeg to be installed and available in PATH.
+ */
+export async function extractAudioFromUrl(url: string, settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
+    try {
+        if (!url || !url.trim()) {
+            new Notice('URL is empty');
+            return null;
+        }
+
+        const trimmedUrl = url.trim();
+
+        if (!videoPlatformRegistry.isValidVideoUrl(trimmedUrl)) {
+            new Notice('The provided text is not a valid video URL');
+            return null;
+        }
+
+        new Notice('Preparing video for transcription...');
+
+        const handler = videoPlatformRegistry.findHandlerForUrl(trimmedUrl);
+        const filenameTemplate = handler
+            ? handler.getYtDlpArgs().outputConfig.filenameTemplate
+            : '%(title)s_%(id)s';
+
+        const config = settingsToProcessorConfig(settings);
+        const outputDir = getOutputDirectory(config);
+        const outputTemplate = path.join(outputDir, `${filenameTemplate}.%(ext)s`);
+
+        const ytdlpResult = await runYtDlp(trimmedUrl, outputTemplate, config);
+
+        new Notice(`Audio extracted successfully!\nReady for transcription.\nSaved to: ${path.dirname(ytdlpResult.audioFilePath)}`);
+
+        return {
+            audioFilePath: ytdlpResult.audioFilePath,
+            sourceUrl: trimmedUrl,
+            metadata: {
+                title: ytdlpResult.title,
+                uploader: ytdlpResult.uploader,
+                description: ytdlpResult.description,
+                tags: ytdlpResult.tags,
+            },
+        };
+
+    } catch (error) {
+        console.error('Video audio extraction error:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        new Notice(`Failed to extract audio for transcription: ${errorMessage}`);
+        return null;
+    }
+}
+
+/**
  * Downloads audio from a video URL in the clipboard for transcription.
  * Supports TikTok, YouTube, and other platforms supported by yt-dlp.
  * Uses yt-dlp directly via child_process for audio extraction.
@@ -225,42 +279,12 @@ export async function extractAudioFromClipboard(settings: AIToolboxSettings): Pr
             return null;
         }
 
-        if (!videoPlatformRegistry.isValidVideoUrl(clipboardText)) {
-            new Notice('Clipboard does not contain a valid video URL');
-            return null;
-        }
-
-        const url = clipboardText.trim();
-        new Notice('Preparing video for transcription...');
-
-        const handler = videoPlatformRegistry.findHandlerForUrl(url);
-        const filenameTemplate = handler
-            ? handler.getYtDlpArgs().outputConfig.filenameTemplate
-            : '%(title)s_%(id)s';
-
-        const config = settingsToProcessorConfig(settings);
-        const outputDir = getOutputDirectory(config);
-        const outputTemplate = path.join(outputDir, `${filenameTemplate}.%(ext)s`);
-
-        const ytdlpResult = await runYtDlp(url, outputTemplate, config);
-
-        new Notice(`Audio extracted successfully!\nReady for transcription.\nSaved to: ${path.dirname(ytdlpResult.audioFilePath)}`);
-
-        return {
-            audioFilePath: ytdlpResult.audioFilePath,
-            sourceUrl: url,
-            metadata: {
-                title: ytdlpResult.title,
-                uploader: ytdlpResult.uploader,
-                description: ytdlpResult.description,
-                tags: ytdlpResult.tags,
-            },
-        };
+        return extractAudioFromUrl(clipboardText, settings);
 
     } catch (error) {
-        console.error('Video audio extraction error:', error);
+        console.error('Clipboard read error:', error);
         const errorMessage = error instanceof Error ? error.message : String(error);
-        new Notice(`Failed to extract audio for transcription: ${errorMessage}`);
+        new Notice(`Failed to read clipboard: ${errorMessage}`);
         return null;
     }
 }

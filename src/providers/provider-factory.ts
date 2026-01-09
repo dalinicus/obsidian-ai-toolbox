@@ -78,22 +78,6 @@ function createProviderFromSelection(settings: AIToolboxSettings, selection: Pro
 }
 
 /**
- * Create a transcription provider from settings.
- *
- * @param settings - Plugin settings containing provider configuration
- * @returns A configured ModelProvider for transcription, or null if not configured
- * @throws ProviderCreationError if the provider cannot be created
- */
-export function createTranscriptionProvider(settings: AIToolboxSettings): ModelProvider | null {
-	const selection = settings.transcriptionProvider;
-	if (!selection) {
-		return null;
-	}
-
-	return createProviderFromSelection(settings, selection);
-}
-
-/**
  * Create a provider for a specific workflow configuration.
  *
  * @param settings - Plugin settings containing provider configuration

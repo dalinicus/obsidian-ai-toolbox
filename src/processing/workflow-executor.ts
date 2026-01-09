@@ -1,150 +1,110 @@
-import { App, MarkdownView, Modal, Notice, TFile, FuzzySuggestModal } from 'obsidian';
-import { WorkflowConfig, AIToolboxSettings } from '../settings';
-import { createWorkflowProvider, ChatMessage, TranscriptionOptions } from '../providers';
+import { App, Notice, TFile } from 'obsidian';
+import { WorkflowConfig, AIToolboxSettings, TranscriptionSourceType } from '../settings';
+import { createWorkflowProvider, ChatMessage, TranscriptionOptions, TranscriptionResult } from '../providers';
+import { videoPlatformRegistry } from './video-platforms';
 import { generateFilenameTimestamp } from '../utils/date-utils';
-import { createTranscriptionNote } from '../transcriptions/transcription-note';
-import * as path from 'path';
+import {
+    OutputHandler,
+    OutputContext,
+    NewNoteOutputHandler,
+    AtCursorOutputHandler,
+    PopupOutputHandler,
+    InputHandler,
+    InputContext,
+    InputResult,
+    VaultFileInputHandler,
+    ClipboardUrlInputHandler,
+    SelectionUrlInputHandler
+} from '../handlers';
 
 /**
- * Modal to display the AI response from a workflow execution
+ * Create an output handler based on the workflow's output type.
  */
-export class WorkflowResultModal extends Modal {
-	private workflowName: string;
-	private response: string;
-
-	constructor(app: App, workflowName: string, response: string) {
-		super(app);
-		this.workflowName = workflowName;
-		this.response = response;
-	}
-
-	onOpen(): void {
-		const { contentEl } = this;
-
-		contentEl.createEl('h2', { text: this.workflowName });
-
-		const responseContainer = contentEl.createDiv('workflow-response-container');
-		responseContainer.createEl('pre', {
-			text: this.response,
-			cls: 'workflow-response-content'
-		});
-
-		// Add copy button
-		const buttonContainer = contentEl.createDiv('workflow-response-buttons');
-		const copyButton = buttonContainer.createEl('button', { text: 'Copy to clipboard' });
-		copyButton.addEventListener('click', async () => {
-			await navigator.clipboard.writeText(this.response);
-			new Notice('Response copied to clipboard');
-		});
-
-		const closeButton = buttonContainer.createEl('button', { text: 'Close' });
-		closeButton.addEventListener('click', () => this.close());
-	}
-
-	onClose(): void {
-		const { contentEl } = this;
-		contentEl.empty();
+function createOutputHandler(outputType: string): OutputHandler {
+	switch (outputType) {
+		case 'new-note':
+			return new NewNoteOutputHandler();
+		case 'at-cursor':
+			return new AtCursorOutputHandler();
+		case 'popup':
+		default:
+			return new PopupOutputHandler();
 	}
 }
 
 /**
- * Insert text at the current cursor position in the active editor.
+ * Create an input handler based on the transcription source type.
  */
-function insertAtCursor(app: App, text: string): void {
-	const activeView = app.workspace.getActiveViewOfType(MarkdownView);
-	if (!activeView) {
-		new Notice('No active editor. Please open a note first.');
-		return;
+function createInputHandler(sourceType: TranscriptionSourceType): InputHandler {
+	switch (sourceType) {
+		case 'select-file-from-vault':
+			return new VaultFileInputHandler();
+		case 'url-from-clipboard':
+			return new ClipboardUrlInputHandler();
+		case 'url-from-selection':
+			return new SelectionUrlInputHandler();
+		default:
+			return new VaultFileInputHandler();
 	}
-
-	const editor = activeView.editor;
-	const cursor = editor.getCursor();
-	editor.replaceRange(text, cursor);
-
-	// Move cursor to end of inserted text
-	const lines = text.split('\n');
-	const lastLine = lines[lines.length - 1] ?? '';
-	const newLine = cursor.line + lines.length - 1;
-	const newCh = lines.length === 1 ? cursor.ch + lastLine.length : lastLine.length;
-	editor.setCursor({ line: newLine, ch: newCh });
-
-	new Notice('Response inserted at cursor');
 }
 
 /**
- * Create a new note with the workflow result.
- * Honors Obsidian's default new note location setting.
+ * Format a timestamp in seconds to MM:SS or HH:MM:SS format.
  */
-async function createNoteWithResult(
-	app: App,
-	workflowName: string,
-	promptText: string,
-	response: string,
-	outputFolder?: string
-): Promise<void> {
+function formatTimestamp(seconds: number): string {
+	const hours = Math.floor(seconds / 3600);
+	const minutes = Math.floor((seconds % 3600) / 60);
+	const secs = Math.floor(seconds % 60);
+
+	if (hours > 0) {
+		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+	}
+	return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Format a transcription result, optionally including timestamps.
+ * When timestamps are included and chunks are available, formats each segment
+ * with its start time prefix.
+ */
+function formatTranscriptionResult(result: TranscriptionResult, includeTimestamps: boolean): string {
+	if (!includeTimestamps || !result.chunks || result.chunks.length === 0) {
+		return result.text;
+	}
+
+	return result.chunks
+		.map(chunk => `[${formatTimestamp(chunk.timestamp[0])}] ${chunk.text}`)
+		.join('\n');
+}
+
+/**
+ * Generate a note title for transcription output based on input source.
+ * - TikTok: "TikTok by <Author> - <Timestamp>"
+ * - YouTube: "<Video Title> - <Author> - <Timestamp>"
+ * - Vault file/fallback: "<Workflow Name> - <Timestamp>"
+ */
+function generateTranscriptionNoteTitle(inputResult: InputResult, workflowName: string): string {
 	const timestamp = generateFilenameTimestamp();
-	const noteTitle = `${workflowName} - ${timestamp}`;
 
-	// Build note content with prompt and response
-	const noteContent = `# ${workflowName}
-
-## Prompt
-
-${promptText}
-
-## Response
-
-${response}
-
----
-*Generated on ${new Date().toLocaleString()}*
-`;
-
-	// Determine folder path: use workflow-specific folder if set, otherwise fall back to Obsidian's default
-	let folderPath: string | undefined;
-	if (outputFolder && outputFolder.trim() !== '') {
-		folderPath = outputFolder.trim().replace(/\/$/, '');
-	} else {
-		// Get the default new note location from Obsidian's vault config
-		// This method exists but is not in the public type definitions
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const vault = app.vault as any;
-		const newFileFolderPath = vault.getConfig?.('newFileFolderPath') as string | undefined;
-		if (newFileFolderPath && newFileFolderPath.trim() !== '') {
-			folderPath = newFileFolderPath.replace(/\/$/, '');
-		}
+	if (!inputResult.sourceUrl) {
+		return `${workflowName} - ${timestamp}`;
 	}
 
-	// Build the file path
-	let filePath: string;
-	if (folderPath) {
-		// Ensure folder exists
-		const folder = app.vault.getAbstractFileByPath(folderPath);
-		if (!folder) {
-			await app.vault.createFolder(folderPath);
-		}
-		filePath = `${folderPath}/${noteTitle}.md`;
-	} else {
-		filePath = `${noteTitle}.md`;
+	const handler = videoPlatformRegistry.findHandlerForUrl(inputResult.sourceUrl);
+	const metadata = inputResult.metadata;
+
+	if (handler?.platformId === 'tiktok') {
+		const author = metadata?.uploader || 'Unknown';
+		return `TikTok by ${author} - ${timestamp}`;
 	}
 
-	// Handle filename conflicts by appending a number
-	let finalPath = filePath;
-	let counter = 1;
-	while (app.vault.getAbstractFileByPath(finalPath)) {
-		const basePath = filePath.replace('.md', '');
-		finalPath = `${basePath} (${counter}).md`;
-		counter++;
+	if (handler?.platformId === 'youtube') {
+		const title = metadata?.title || 'Video';
+		const author = metadata?.uploader || 'Unknown';
+		return `${title} - ${author} - ${timestamp}`;
 	}
 
-	// Create the note
-	const file = await app.vault.create(finalPath, noteContent);
-
-	// Open the newly created note
-	const leaf = app.workspace.getLeaf(false);
-	await leaf.openFile(file as TFile);
-
-	new Notice(`Created note: ${file.name}`);
+	return `${workflowName} - ${timestamp}`;
 }
 
 /**
@@ -251,18 +211,16 @@ async function executeChatWorkflow(
 		// Send the chat request
 		const result = await provider.sendChat(messages);
 
-		// Handle output based on configured output type
+		// Handle output using the output handler system
 		const outputType = workflow.outputType || 'popup';
+		const handler = createOutputHandler(outputType);
+		const context: OutputContext = {
+			app,
+			workflow,
+			promptText
+		};
 
-		if (outputType === 'new-note') {
-			await createNoteWithResult(app, workflow.name, promptText, result.content, workflow.outputFolder);
-		} else if (outputType === 'at-cursor') {
-			insertAtCursor(app, result.content);
-		} else {
-			// Default: show in popup modal
-			const resultModal = new WorkflowResultModal(app, workflow.name, result.content);
-			resultModal.open();
-		}
+		await handler.handleOutput(result.content, context);
 
 	} catch (error) {
 		console.error('Workflow execution error:', error);
@@ -272,41 +230,8 @@ async function executeChatWorkflow(
 }
 
 /**
- * Modal for selecting an audio file from the vault
- */
-class AudioFileSelectorModal extends FuzzySuggestModal<TFile> {
-	private audioFiles: TFile[];
-	private onSelect: (file: TFile) => void;
-
-	constructor(app: App, onSelect: (file: TFile) => void) {
-		super(app);
-		this.onSelect = onSelect;
-
-		// Get all audio files from the vault
-		const supportedExtensions = ['mp3', 'wav', 'm4a', 'webm', 'ogg', 'flac', 'aac'];
-		this.audioFiles = app.vault.getFiles().filter(file => {
-			const ext = file.extension.toLowerCase();
-			return supportedExtensions.includes(ext);
-		});
-
-		this.setPlaceholder('Select an audio file to transcribe...');
-	}
-
-	getItems(): TFile[] {
-		return this.audioFiles;
-	}
-
-	getItemText(file: TFile): string {
-		return file.path;
-	}
-
-	onChooseItem(file: TFile): void {
-		this.onSelect(file);
-	}
-}
-
-/**
  * Execute a transcription workflow.
+ * Routes to the appropriate input handler based on workflow.transcriptionContext.sourceType.
  */
 async function executeTranscriptionWorkflow(
 	app: App,
@@ -332,51 +257,60 @@ async function executeTranscriptionWorkflow(
 		return;
 	}
 
-	// Show file selector modal
-	const modal = new AudioFileSelectorModal(app, async (audioFile: TFile) => {
-		try {
-			new Notice(`Transcribing ${audioFile.name}...`);
+	// Determine source type from workflow configuration
+	const sourceType: TranscriptionSourceType = workflow.transcriptionContext?.sourceType ?? 'url-from-clipboard';
 
-			// Get the absolute path to the audio file
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const adapter = app.vault.adapter as any;
-			const audioFilePath = path.join(adapter.basePath, audioFile.path);
+	// Create appropriate input handler based on source type
+	const inputHandler = createInputHandler(sourceType);
+	const inputContext: InputContext = {
+		app,
+		settings,
+		workflow
+	};
 
-			// Build transcription options from workflow settings
-			const transcriptionOptions: TranscriptionOptions = {
-				includeTimestamps: workflow.includeTimestamps ?? true,
-				language: workflow.language || undefined
-			};
+	try {
+		// Get input (audio file path) from the input handler
+		const inputResult = await inputHandler.getInput(inputContext);
 
-			// Transcribe the audio
-			const transcriptionResult = await provider.transcribeAudio(audioFilePath, transcriptionOptions);
-
-			// Handle output based on configured output type
-			const outputType = workflow.outputType || 'new-note';
-
-			if (outputType === 'new-note') {
-				// Create a transcription note
-				await createTranscriptionNote(
-					app,
-					transcriptionResult,
-					audioFile.path,
-					workflow.includeTimestamps ?? true,
-					workflow.outputFolder || ''
-				);
-			} else if (outputType === 'at-cursor') {
-				insertAtCursor(app, transcriptionResult.text);
-			} else {
-				// Show in popup modal
-				const resultModal = new WorkflowResultModal(app, workflow.name, transcriptionResult.text);
-				resultModal.open();
-			}
-
-		} catch (error) {
-			console.error('Transcription workflow execution error:', error);
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			new Notice(`Failed to transcribe audio: ${errorMessage}`);
+		if (!inputResult) {
+			// User cancelled or operation failed (error already shown by handler)
+			return;
 		}
-	});
 
-	modal.open();
+		new Notice(`Transcribing audio...`);
+
+		// Build transcription options from workflow settings
+		const transcriptionOptions: TranscriptionOptions = {
+			includeTimestamps: workflow.includeTimestamps ?? true,
+			language: workflow.language || undefined
+		};
+
+		// Transcribe the audio
+		const transcriptionResult = await provider.transcribeAudio(inputResult.audioFilePath, transcriptionOptions);
+
+		// Format the transcription with timestamps if enabled
+		const formattedText = formatTranscriptionResult(
+			transcriptionResult,
+			workflow.includeTimestamps ?? true
+		);
+
+		// Generate note title based on source platform
+		const noteTitle = generateTranscriptionNoteTitle(inputResult, workflow.name);
+
+		// Handle output using the output handler system
+		const outputType = workflow.outputType || 'new-note';
+		const handler = createOutputHandler(outputType);
+		const context: OutputContext = {
+			app,
+			workflow,
+			noteTitle
+		};
+
+		await handler.handleOutput(formattedText, context);
+
+	} catch (error) {
+		console.error('Transcription workflow execution error:', error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		new Notice(`Failed to transcribe audio: ${errorMessage}`);
+	}
 }
