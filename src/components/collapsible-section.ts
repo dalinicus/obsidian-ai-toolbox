@@ -20,6 +20,8 @@ export interface CollapsibleSectionConfig {
 	isHeading?: boolean;
 	/** Optional icon to display before the title */
 	icon?: string;
+	/** Optional secondary text to display in the header (e.g., ID) */
+	secondaryText?: string;
 	/** Callback when the delete button is clicked (if provided, delete button is shown) */
 	onDelete?: () => void;
 	/** Callback when the title changes (for dynamic name updates) */
@@ -56,6 +58,7 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		startExpanded,
 		isHeading = true,
 		icon,
+		secondaryText,
 		onDelete,
 	} = config;
 
@@ -89,6 +92,12 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		iconElement = headerSetting.nameEl.createSpan({ cls: 'workflow-header-icon' });
 		setIcon(iconElement, icon);
 		headerSetting.nameEl.appendChild(iconElement);
+	}
+
+	// Add secondary text if provided (displayed before delete button)
+	if (secondaryText) {
+		const secondaryEl = headerSetting.controlEl.createSpan({ cls: 'collapsible-section-secondary-text' });
+		secondaryEl.textContent = secondaryText;
 	}
 
 	// Add delete button if callback provided

@@ -1,4 +1,4 @@
-import { Setting } from "obsidian";
+import { Notice, Setting } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
@@ -10,8 +10,7 @@ import {
 	ChatContextType,
 	ExpandOnNextRenderState,
 	generateId,
-	DEFAULT_WORKFLOW_CONFIG,
-	WorkflowContextConfig
+	DEFAULT_WORKFLOW_CONFIG
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
@@ -110,6 +109,7 @@ function displayWorkflowSettings(
 		startExpanded: shouldExpand,
 		isHeading: true,
 		icon,
+		secondaryText: workflow.id,
 		onDelete: async () => {
 			const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
 			if (index !== -1) {
@@ -230,6 +230,11 @@ function displayChatWorkflowSettings(
 			.onChange(async (value) => {
 				workflow.availableAsInput = value;
 				await plugin.saveSettings();
+				// Refresh so other workflow dropdowns update to include/exclude this workflow
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
 			}));
 
 	// List in Workload Command toggle
@@ -452,6 +457,11 @@ function displayTranscriptionWorkflowSettings(
 			.onChange(async (value) => {
 				workflow.availableAsInput = value;
 				await plugin.saveSettings();
+				// Refresh so other workflow dropdowns update to include/exclude this workflow
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
 			}));
 
 	// List in Workflow Command toggle
@@ -623,11 +633,6 @@ function displayWorkflowContextSection(
 		w => w.availableAsInput && w.id !== workflow.id
 	);
 
-	// Don't render if no workflows are available
-	if (availableWorkflows.length === 0) {
-		return;
-	}
-
 	// Workflow context subsection
 	const workflowSection = containerEl.createDiv('workflow-context-section');
 
@@ -638,34 +643,39 @@ function displayWorkflowContextSection(
 	const selectedWorkflowIds = new Set(workflow.workflowContexts?.map(wc => wc.workflowId) ?? []);
 	const unselectedWorkflows = availableWorkflows.filter(w => !selectedWorkflowIds.has(w.id));
 
-	if (unselectedWorkflows.length > 0) {
-		new Setting(dropdownContainer)
-			.setName('Add workflow')
-			.setDesc('Select a workflow to use as context')
-			.addDropdown(dropdown => {
-				dropdown.addOption('', 'Select a workflow...');
-				for (const w of unselectedWorkflows) {
-					dropdown.addOption(w.id, w.name);
+	// Determine if dropdown should be disabled
+	const isDisabled = unselectedWorkflows.length === 0;
+
+	new Setting(dropdownContainer)
+		.setName('Add workflow')
+		.setDesc('Select a workflow to use as context')
+		.addDropdown(dropdown => {
+			dropdown.addOption('', 'Select a workflow...');
+			for (const w of unselectedWorkflows) {
+				dropdown.addOption(w.id, w.name);
+			}
+			dropdown.setDisabled(isDisabled);
+			if (isDisabled) {
+				dropdown.selectEl.setAttribute('title', 'No additional valid workflows are available.');
+			}
+			dropdown.onChange(async (value) => {
+				if (!value) return;
+
+				if (!workflow.workflowContexts) {
+					workflow.workflowContexts = [];
 				}
-				dropdown.onChange(async (value) => {
-					if (!value) return;
+				workflow.workflowContexts.push({ workflowId: value });
+				await plugin.saveSettings();
 
-					if (!workflow.workflowContexts) {
-						workflow.workflowContexts = [];
-					}
-					workflow.workflowContexts.push({ workflowId: value });
-					await plugin.saveSettings();
-
-					if (isExpanded()) {
-						// Check if available tokens section is expanded before refreshing
-						const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
-						const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
-						callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
-					}
-					callbacks.refresh();
-				});
+				if (isExpanded()) {
+					// Check if available tokens section is expanded before refreshing
+					const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
+					const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
+					callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
+				}
+				callbacks.refresh();
 			});
-	}
+		});
 
 	// Display selected workflows with delete buttons
 	const selectedWorkflowsContainer = workflowSection.createDiv('workflow-context-selected-list');
@@ -700,6 +710,37 @@ function displayWorkflowContextSection(
 }
 
 /**
+ * Represents a group of tokens from a single source
+ */
+interface TokenGroup {
+	name: string;
+	tokens: TokenDefinition[];
+}
+
+/**
+ * Render a clickable token reference element with copy functionality
+ */
+function renderTokenReference(
+	container: HTMLElement,
+	token: TokenDefinition
+): void {
+	const listItem = container.createEl('li', { cls: 'available-tokens-item' });
+
+	const tokenText = `{{${token.name}}}`;
+	const tokenRef = listItem.createEl('code', { cls: 'available-tokens-reference' });
+	tokenRef.textContent = tokenText;
+	tokenRef.setAttribute('title', 'Click to copy');
+	tokenRef.addEventListener('click', async (e) => {
+		e.stopPropagation();
+		await navigator.clipboard.writeText(tokenText);
+		new Notice(`Copied ${tokenText}`);
+	});
+
+	const tokenDesc = listItem.createSpan('available-tokens-description');
+	tokenDesc.textContent = ` — ${token.description}`;
+}
+
+/**
  * Display the available tokens section showing tokens from all configured contexts
  */
 function displayAvailableTokensSection(
@@ -719,30 +760,43 @@ function displayAvailableTokensSection(
 		return;
 	}
 
-	// Collect all tokens from configured contexts
-	const allTokens: TokenDefinition[] = [];
+	// Collect token groups
+	const tokenGroups: TokenGroup[] = [];
+	let totalTokenCount = 0;
 
-	// Add context handler tokens
-	for (const context of contexts) {
-		const handler = createContextHandler(context.type);
-		const tokens = handler.getAvailableTokens();
-		allTokens.push(...tokens);
+	// Add context handler tokens as a single "Context" group
+	if (hasContexts) {
+		const contextTokens: TokenDefinition[] = [];
+		for (const context of contexts) {
+			const handler = createContextHandler(context.type);
+			const tokens = handler.getAvailableTokens();
+			contextTokens.push(...tokens);
+		}
+		if (contextTokens.length > 0) {
+			tokenGroups.push({ name: 'Context', tokens: contextTokens });
+			totalTokenCount += contextTokens.length;
+		}
 	}
 
-	// Add workflow context tokens
+	// Add workflow context tokens grouped by source workflow
 	for (const workflowContext of workflowContexts) {
 		const sourceWorkflow = plugin.settings.workflows.find(w => w.id === workflowContext.workflowId);
 		if (!sourceWorkflow) continue;
 
 		const workflowTokens = getWorkflowContextTokens(
 			sourceWorkflow.id,
-			sourceWorkflow.name,
 			sourceWorkflow.type || 'chat'
 		);
-		allTokens.push(...workflowTokens);
+		if (workflowTokens.length > 0) {
+			tokenGroups.push({
+				name: sourceWorkflow.name || 'Unnamed workflow',
+				tokens: workflowTokens
+			});
+			totalTokenCount += workflowTokens.length;
+		}
 	}
 
-	if (allTokens.length === 0) {
+	if (totalTokenCount === 0) {
 		return;
 	}
 
@@ -758,7 +812,7 @@ function displayAvailableTokensSection(
 	headerArrow.textContent = shouldExpand ? '▾' : '▸';
 
 	const headerTitle = header.createSpan('available-tokens-title');
-	headerTitle.textContent = `Available tokens (${allTokens.length})`;
+	headerTitle.textContent = `Available tokens (${totalTokenCount})`;
 
 	const contentClasses = shouldExpand ? 'available-tokens-content is-expanded' : 'available-tokens-content is-collapsed';
 	const content = sectionContainer.createDiv(contentClasses);
@@ -766,16 +820,17 @@ function displayAvailableTokensSection(
 	const description = content.createDiv('available-tokens-description-text');
 	description.textContent = 'Tokens available for use in prompts and output templates';
 
-	const tokenList = content.createEl('ul', { cls: 'available-tokens-list' });
+	// Render each token group
+	for (const group of tokenGroups) {
+		const groupContainer = content.createDiv('available-tokens-group');
 
-	for (const token of allTokens) {
-		const listItem = tokenList.createEl('li', { cls: 'available-tokens-item' });
+		const groupHeader = groupContainer.createDiv('available-tokens-group-header');
+		groupHeader.textContent = group.name;
 
-		const tokenRef = listItem.createEl('code', { cls: 'available-tokens-reference' });
-		tokenRef.textContent = `{{${token.name}}}`;
-
-		const tokenDesc = listItem.createSpan('available-tokens-description');
-		tokenDesc.textContent = ` — ${token.description}`;
+		const tokenList = groupContainer.createEl('ul', { cls: 'available-tokens-list' });
+		for (const token of group.tokens) {
+			renderTokenReference(tokenList, token);
+		}
 	}
 
 	// Toggle handler

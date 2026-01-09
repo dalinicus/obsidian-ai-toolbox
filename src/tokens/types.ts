@@ -31,7 +31,7 @@ export interface ChatWorkflowTokens extends BaseWorkflowTokens {
 /**
  * Token model for transcription workflows
  */
-export interface TranscriptionWorkflowTokens extends BaseWorkflowTokens {
+export interface TranscriptionWorkflowTokens {
 	/** The author/uploader of the video */
 	author: string;
 	/** The title of the video */
@@ -40,6 +40,8 @@ export interface TranscriptionWorkflowTokens extends BaseWorkflowTokens {
 	transcription: string;
 	/** The original video URL */
 	sourceUrl: string;
+	/** The video description */
+	description: string;
 }
 
 /**
@@ -59,7 +61,7 @@ export const TRANSCRIPTION_WORKFLOW_TOKENS: TokenDefinition[] = [
 	{ name: 'title', description: 'The title of the video' },
 	{ name: 'transcription', description: 'The full transcription text' },
 	{ name: 'sourceUrl', description: 'The original video URL' },
-	{ name: 'timestamp', description: 'When the workflow was executed' }
+	{ name: 'description', description: 'The video description' }
 ];
 
 /**
@@ -76,19 +78,17 @@ export function getTokenDefinitionsForType(type: WorkflowType): TokenDefinition[
  * Returns tokens prefixed with the workflow ID to avoid collisions.
  *
  * @param workflowId - The ID of the workflow
- * @param workflowName - The display name of the workflow
  * @param workflowType - The type of the workflow (chat or transcription)
  */
 export function getWorkflowContextTokens(
 	workflowId: string,
-	workflowName: string,
 	workflowType: WorkflowType
 ): TokenDefinition[] {
 	const baseTokens = getTokenDefinitionsForType(workflowType);
 
 	return baseTokens.map(token => ({
 		name: `${workflowId}.${token.name}`,
-		description: `${workflowName}: ${token.description}`
+		description: token.description
 	}));
 }
 

@@ -317,121 +317,12 @@ button.mod-success:hover {
 	stroke-width: 2;
 }
 
-/* Token info section styles (informational blue) */
-.token-info-section {
-	margin-top: 12px;
-	margin-bottom: 12px;
-	border-radius: 6px;
-	background-color: rgba(100, 150, 255, 0.08);
-	border: 1px solid rgba(100, 150, 255, 0.2);
-	overflow: hidden;
-}
-
-.theme-dark .token-info-section {
-	background-color: rgba(100, 150, 255, 0.05);
-	border-color: rgba(100, 150, 255, 0.15);
-}
-
-.token-info-header {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 12px;
-	cursor: pointer;
-	user-select: none;
-	background-color: rgba(100, 150, 255, 0.05);
-}
-
-.theme-dark .token-info-header {
-	background-color: rgba(100, 150, 255, 0.03);
-}
-
-.token-info-header:hover {
-	background-color: rgba(100, 150, 255, 0.12);
-}
-
-.theme-dark .token-info-header:hover {
-	background-color: rgba(100, 150, 255, 0.08);
-}
-
-.token-info-header-icon {
-	display: flex;
-	align-items: center;
-	color: rgba(100, 150, 255, 0.9);
-	opacity: 0.8;
-}
-
-.theme-dark .token-info-header-icon {
-	color: rgba(120, 170, 255, 0.9);
-}
-
-.token-info-header-icon svg {
-	width: 18px;
-	height: 18px;
-}
-
-.token-info-arrow {
-	font-size: 11px;
-	color: var(--text-faint);
-	opacity: 0.7;
-}
-
-.token-info-title {
-	font-weight: 400;
-	font-size: 13px;
-	color: var(--text-muted);
-}
-
-.token-info-content {
-	padding: 0 12px;
-}
-
-.token-info-content.is-collapsed {
-	display: none;
-}
-
-.token-info-content.is-expanded {
-	display: block;
-	padding-bottom: 12px;
-}
-
-.token-info-description {
-	font-size: 12px;
-	color: var(--text-muted);
-	margin: 8px 0 12px 0;
-	line-height: 1.6;
-	opacity: 0.9;
-}
-
-.token-info-list {
-	margin: 0;
-	padding-left: 20px;
-}
-
-.token-info-item {
-	font-size: 12px;
-	margin-bottom: 8px;
-	line-height: 1.6;
-}
-
-.token-info-reference {
+/* Secondary text in collapsible section headers (e.g., workflow ID) */
+.collapsible-section-secondary-text {
 	font-family: var(--font-monospace);
 	font-size: 11px;
-	background-color: rgba(100, 150, 255, 0.12);
-	padding: 2px 6px;
-	border-radius: 3px;
-	color: rgba(80, 130, 230, 1);
-	font-weight: 500;
-}
-
-.theme-dark .token-info-reference {
-	background-color: rgba(100, 150, 255, 0.15);
-	color: rgba(130, 180, 255, 1);
-}
-
-.token-info-token-description {
-	color: var(--text-muted);
-	opacity: 0.85;
+	color: var(--text-faint);
+	margin-right: 8px;
 }
 
 /* Context section styles */
@@ -564,6 +455,12 @@ button.mod-success:hover {
 	border-radius: 3px;
 	color: rgba(60, 140, 60, 1);
 	font-weight: 500;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.available-tokens-reference:hover {
+	background-color: rgba(100, 200, 100, 0.25);
 }
 
 .theme-dark .available-tokens-reference {
@@ -579,7 +476,31 @@ button.mod-success:hover {
 .available-tokens-description-text {
 	font-size: 12px;
 	color: var(--text-muted);
+	margin-top: 8px;
 	margin-bottom: 8px;
+}
+
+.available-tokens-group {
+	margin-bottom: 12px;
+}
+
+.available-tokens-group:last-child {
+	margin-bottom: 0;
+}
+
+.available-tokens-group-header {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--text-muted);
+	text-transform: uppercase;
+	letter-spacing: 0.5px;
+	margin-bottom: 6px;
+	padding-top: 4px;
+	border-top: 1px solid rgba(100, 200, 100, 0.15);
+}
+
+.theme-dark .available-tokens-group-header {
+	border-top-color: rgba(100, 200, 100, 0.1);
 }
 
 /* Workflow context section styles */

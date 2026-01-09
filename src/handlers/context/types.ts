@@ -10,7 +10,7 @@ export type { ChatContextType, ChatContextConfig } from '../../settings';
  */
 export const CHAT_CONTEXT_TYPE_LABELS: Record<ChatContextType, string> = {
     'selection': 'Selection',
-    'active-tab': 'Active Tab File Contents',
+    'active-tab': 'Active Tab',
     'clipboard': 'Clipboard'
 };
 
