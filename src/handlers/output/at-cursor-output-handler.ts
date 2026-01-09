@@ -3,7 +3,7 @@ import { OutputHandler, OutputContext } from './types';
 
 /**
  * Output handler that inserts the AI response at the current cursor position
- * in the active Obsidian editor.
+ * or replaces selected text in the active Obsidian editor.
  */
 export class AtCursorOutputHandler implements OutputHandler {
     async handleOutput(responseText: string, context: OutputContext): Promise<void> {
@@ -14,17 +14,31 @@ export class AtCursorOutputHandler implements OutputHandler {
         }
 
         const editor = activeView.editor;
-        const cursor = editor.getCursor();
-        editor.replaceRange(responseText, cursor);
+        const hasSelection = editor.somethingSelected();
 
-        // Move cursor to end of inserted text
-        const lines = responseText.split('\n');
+        if (hasSelection) {
+            const from = editor.getCursor('from');
+            editor.replaceSelection(responseText);
+            this.moveCursorToEndOfText(editor, from, responseText);
+            new Notice('Response replaced selection');
+        } else {
+            const cursor = editor.getCursor();
+            editor.replaceRange(responseText, cursor);
+            this.moveCursorToEndOfText(editor, cursor, responseText);
+            new Notice('Response inserted at cursor');
+        }
+    }
+
+    private moveCursorToEndOfText(
+        editor: MarkdownView['editor'],
+        startPos: { line: number; ch: number },
+        text: string
+    ): void {
+        const lines = text.split('\n');
         const lastLine = lines[lines.length - 1] ?? '';
-        const newLine = cursor.line + lines.length - 1;
-        const newCh = lines.length === 1 ? cursor.ch + lastLine.length : lastLine.length;
+        const newLine = startPos.line + lines.length - 1;
+        const newCh = lines.length === 1 ? startPos.ch + lastLine.length : lastLine.length;
         editor.setCursor({ line: newLine, ch: newCh });
-
-        new Notice('Response inserted at cursor');
     }
 }
 

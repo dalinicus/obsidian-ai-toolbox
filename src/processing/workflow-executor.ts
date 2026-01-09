@@ -24,7 +24,10 @@ import {
     replaceWorkflowTokens,
     createChatWorkflowTokens,
     createTranscriptionWorkflowTokens,
-    getDependencyWorkflowIds
+    getDependencyWorkflowIds,
+    gatherContextValues,
+    replaceContextTokens,
+    hasContextTokens
 } from './workflow-chaining';
 
 /**
@@ -306,6 +309,12 @@ async function executeChatWorkflow(
 		promptText = replaceWorkflowTokens(promptText, dependencyResults);
 	}
 
+	// Replace context tokens ({{selection}}, {{clipboard}}, etc.) with actual values
+	if (hasContextTokens(promptText)) {
+		const contextValues = await gatherContextValues(app);
+		promptText = replaceContextTokens(promptText, contextValues);
+	}
+
 	// Validate workflow has text
 	if (!promptText.trim()) {
 		new Notice(`Workflow "${workflow.name}" has no prompt text. Please add prompt text in settings.`);
@@ -379,6 +388,12 @@ async function executeChatWorkflowInternal(
 	// Replace workflow context tokens
 	if (dependencyResults.size > 0) {
 		promptText = replaceWorkflowTokens(promptText, dependencyResults);
+	}
+
+	// Replace context tokens ({{selection}}, {{clipboard}}, etc.) with actual values
+	if (hasContextTokens(promptText)) {
+		const contextValues = await gatherContextValues(app);
+		promptText = replaceContextTokens(promptText, contextValues);
 	}
 
 	if (!promptText.trim()) {

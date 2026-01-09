@@ -1,4 +1,4 @@
-import { App } from 'obsidian';
+import { App, MarkdownView } from 'obsidian';
 import { WorkflowConfig, AIToolboxSettings } from '../settings';
 
 /**
@@ -148,5 +148,94 @@ export function createTranscriptionWorkflowTokens(
  */
 export function getDependencyWorkflowIds(workflow: WorkflowConfig): string[] {
     return (workflow.workflowContexts ?? []).map(ctx => ctx.workflowId);
+}
+
+/**
+ * Context token values for replacement in prompts
+ */
+export interface ContextTokenValues {
+    /** The currently selected text in the editor */
+    selection?: string;
+    /** The full contents of the active file */
+    activeTabContent?: string;
+    /** The filename of the active file */
+    activeTabFilename?: string;
+    /** The clipboard contents */
+    clipboard?: string;
+}
+
+/**
+ * Gather context values from the current editor/clipboard state.
+ * This retrieves selection, active tab content, filename, and clipboard for token replacement.
+ */
+export async function gatherContextValues(app: App): Promise<ContextTokenValues> {
+    const values: ContextTokenValues = {};
+
+    const activeView = app.workspace.getActiveViewOfType(MarkdownView);
+
+    if (activeView) {
+        const editor = activeView.editor;
+        const selection = editor.getSelection();
+        if (selection && selection.trim()) {
+            values.selection = selection;
+        }
+
+        const file = activeView.file;
+        if (file) {
+            values.activeTabFilename = file.name;
+            try {
+                values.activeTabContent = await app.vault.read(file);
+            } catch {
+                // Ignore read errors
+            }
+        }
+    }
+
+    try {
+        const clipboardText = await navigator.clipboard.readText();
+        if (clipboardText && clipboardText.trim()) {
+            values.clipboard = clipboardText;
+        }
+    } catch {
+        // Ignore clipboard access errors
+    }
+
+    return values;
+}
+
+/**
+ * Replace context tokens in a prompt with actual values.
+ * Handles simple tokens like {{selection}}, {{clipboard}}, {{activeTabContent}}, {{activeTabFilename}}.
+ */
+export function replaceContextTokens(
+    promptText: string,
+    values: ContextTokenValues
+): string {
+    // Match simple tokens like {{selection}} (no dot, simple alphanumeric name)
+    const tokenPattern = /\{\{([a-zA-Z]+)\}\}/g;
+
+    return promptText.replace(tokenPattern, (match, tokenName: string) => {
+        switch (tokenName) {
+            case 'selection':
+                return values.selection ?? match;
+            case 'activeTabContent':
+                return values.activeTabContent ?? match;
+            case 'activeTabFilename':
+                return values.activeTabFilename ?? match;
+            case 'clipboard':
+                return values.clipboard ?? match;
+            default:
+                // Unknown token - leave as-is
+                return match;
+        }
+    });
+}
+
+/**
+ * Check if a prompt contains any context tokens that need replacement.
+ */
+export function hasContextTokens(promptText: string): boolean {
+    const contextTokens = ['selection', 'activeTabContent', 'activeTabFilename', 'clipboard'];
+    return contextTokens.some(token => promptText.includes(`{{${token}}}`));
 }
 
