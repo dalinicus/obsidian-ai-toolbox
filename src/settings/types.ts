@@ -89,6 +89,15 @@ export interface ChatContextConfig {
 }
 
 /**
+ * Configuration for a workflow used as a context source
+ */
+export interface WorkflowContextConfig {
+	/** The ID of the workflow to use as context */
+	workflowId: string;
+}
+// TODO: Implement circular dependency detection to prevent workflows from referencing each other in a cycle
+
+/**
  * Configuration for a custom workflow
  */
 export interface WorkflowConfig {
@@ -106,6 +115,8 @@ export interface WorkflowConfig {
 	availableAsInput: boolean;
 	// Chat workflow context sources (optional for backward compatibility)
 	contexts?: ChatContextConfig[];
+	// Workflow context sources - other workflows whose output can be used as input
+	workflowContexts?: WorkflowContextConfig[];
 	// Transcription-specific settings (optional for backward compatibility)
 	language?: string;
 	includeTimestamps?: boolean;
@@ -128,6 +139,7 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	showInCommand: true,
 	availableAsInput: false,
 	contexts: [],
+	workflowContexts: [],
 	language: '',
 	includeTimestamps: true
 };
@@ -173,5 +185,6 @@ export interface ExpandOnNextRenderState {
 	providerId?: string;
 	modelId?: string;
 	workflowId?: string;
+	availableTokensExpanded?: boolean;
 }
 

@@ -66,8 +66,29 @@ export const TRANSCRIPTION_WORKFLOW_TOKENS: TokenDefinition[] = [
  * Get token definitions for a workflow type
  */
 export function getTokenDefinitionsForType(type: WorkflowType): TokenDefinition[] {
-	return type === 'transcription' 
-		? TRANSCRIPTION_WORKFLOW_TOKENS 
+	return type === 'transcription'
+		? TRANSCRIPTION_WORKFLOW_TOKENS
 		: CHAT_WORKFLOW_TOKENS;
+}
+
+/**
+ * Get token definitions for a workflow used as a context source.
+ * Returns tokens prefixed with the workflow ID to avoid collisions.
+ *
+ * @param workflowId - The ID of the workflow
+ * @param workflowName - The display name of the workflow
+ * @param workflowType - The type of the workflow (chat or transcription)
+ */
+export function getWorkflowContextTokens(
+	workflowId: string,
+	workflowName: string,
+	workflowType: WorkflowType
+): TokenDefinition[] {
+	const baseTokens = getTokenDefinitionsForType(workflowType);
+
+	return baseTokens.map(token => ({
+		name: `${workflowId}.${token.name}`,
+		description: `${workflowName}: ${token.description}`
+	}));
 }
 

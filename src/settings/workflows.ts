@@ -10,12 +10,13 @@ import {
 	ChatContextType,
 	ExpandOnNextRenderState,
 	generateId,
-	DEFAULT_WORKFLOW_CONFIG
+	DEFAULT_WORKFLOW_CONFIG,
+	WorkflowContextConfig
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
 import { WorkflowTypeModal } from "../components/workflow-type-modal";
-import { TokenDefinition } from "../tokens";
+import { TokenDefinition, getWorkflowContextTokens } from "../tokens";
 import {
 	CHAT_CONTEXT_TYPE_LABELS,
 	CHAT_CONTEXT_TYPE_DESCRIPTIONS,
@@ -560,7 +561,10 @@ function displayContextSection(
 
 		// Refresh to update the available tokens section
 		if (isExpanded()) {
-			callbacks.setExpandState({ workflowId: workflow.id });
+			// Check if available tokens section is expanded before refreshing
+			const tokensContent = contentContainer.querySelector('.available-tokens-content');
+			const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
+			callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
 		}
 		callbacks.refresh();
 	};
@@ -592,8 +596,107 @@ function displayContextSection(
 				}));
 	}
 
+	// Workflow context section (select other workflows as input)
+	displayWorkflowContextSection(contextSection, plugin, workflow, callbacks, isExpanded);
+
 	// Available tokens section (inside the context section)
-	displayAvailableTokensSection(contextSection, workflow);
+	displayAvailableTokensSection(contextSection, workflow, plugin, callbacks);
+}
+
+/**
+ * Display workflow context section for selecting other workflows as input
+ */
+function displayWorkflowContextSection(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	workflow: WorkflowConfig,
+	callbacks: WorkflowSettingsCallbacks,
+	isExpanded: () => boolean
+): void {
+	// Ensure workflowContexts array exists
+	if (!workflow.workflowContexts) {
+		workflow.workflowContexts = [];
+	}
+
+	// Get workflows that are available as input (excluding current workflow)
+	const availableWorkflows = plugin.settings.workflows.filter(
+		w => w.availableAsInput && w.id !== workflow.id
+	);
+
+	// Don't render if no workflows are available
+	if (availableWorkflows.length === 0) {
+		return;
+	}
+
+	// Workflow context subsection
+	const workflowSection = containerEl.createDiv('workflow-context-section');
+
+	// Dropdown to select a workflow
+	const dropdownContainer = workflowSection.createDiv('workflow-context-dropdown-container');
+
+	// Build options for dropdown
+	const selectedWorkflowIds = new Set(workflow.workflowContexts?.map(wc => wc.workflowId) ?? []);
+	const unselectedWorkflows = availableWorkflows.filter(w => !selectedWorkflowIds.has(w.id));
+
+	if (unselectedWorkflows.length > 0) {
+		new Setting(dropdownContainer)
+			.setName('Add workflow')
+			.setDesc('Select a workflow to use as context')
+			.addDropdown(dropdown => {
+				dropdown.addOption('', 'Select a workflow...');
+				for (const w of unselectedWorkflows) {
+					dropdown.addOption(w.id, w.name);
+				}
+				dropdown.onChange(async (value) => {
+					if (!value) return;
+
+					if (!workflow.workflowContexts) {
+						workflow.workflowContexts = [];
+					}
+					workflow.workflowContexts.push({ workflowId: value });
+					await plugin.saveSettings();
+
+					if (isExpanded()) {
+						// Check if available tokens section is expanded before refreshing
+						const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
+						const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
+						callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
+					}
+					callbacks.refresh();
+				});
+			});
+	}
+
+	// Display selected workflows with delete buttons
+	const selectedWorkflowsContainer = workflowSection.createDiv('workflow-context-selected-list');
+
+	for (const workflowContext of workflow.workflowContexts ?? []) {
+		const selectedWorkflow = plugin.settings.workflows.find(w => w.id === workflowContext.workflowId);
+		if (!selectedWorkflow) continue;
+
+		const itemContainer = selectedWorkflowsContainer.createDiv('workflow-context-selected-item');
+
+		const itemLabel = itemContainer.createSpan('workflow-context-selected-label');
+		itemLabel.textContent = selectedWorkflow.name;
+
+		const deleteButton = itemContainer.createEl('button', { cls: 'workflow-context-delete-button' });
+		deleteButton.textContent = '×';
+		deleteButton.setAttribute('aria-label', `Remove ${selectedWorkflow.name}`);
+		deleteButton.addEventListener('click', async () => {
+			workflow.workflowContexts = workflow.workflowContexts?.filter(
+				wc => wc.workflowId !== workflowContext.workflowId
+			);
+			await plugin.saveSettings();
+
+			if (isExpanded()) {
+				// Check if available tokens section is expanded before refreshing
+				const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
+				const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
+				callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
+			}
+			callbacks.refresh();
+		});
+	}
 }
 
 /**
@@ -601,37 +704,64 @@ function displayContextSection(
  */
 function displayAvailableTokensSection(
 	containerEl: HTMLElement,
-	workflow: WorkflowConfig
+	workflow: WorkflowConfig,
+	plugin: AIToolboxPlugin,
+	callbacks: WorkflowSettingsCallbacks
 ): void {
 	const contexts = workflow.contexts ?? [];
+	const workflowContexts = workflow.workflowContexts ?? [];
 
-	if (contexts.length === 0) {
+	// Check if there's anything to display
+	const hasContexts = contexts.length > 0;
+	const hasWorkflowContexts = workflowContexts.length > 0;
+
+	if (!hasContexts && !hasWorkflowContexts) {
 		return;
 	}
 
 	// Collect all tokens from configured contexts
 	const allTokens: TokenDefinition[] = [];
+
+	// Add context handler tokens
 	for (const context of contexts) {
 		const handler = createContextHandler(context.type);
 		const tokens = handler.getAvailableTokens();
 		allTokens.push(...tokens);
 	}
 
+	// Add workflow context tokens
+	for (const workflowContext of workflowContexts) {
+		const sourceWorkflow = plugin.settings.workflows.find(w => w.id === workflowContext.workflowId);
+		if (!sourceWorkflow) continue;
+
+		const workflowTokens = getWorkflowContextTokens(
+			sourceWorkflow.id,
+			sourceWorkflow.name,
+			sourceWorkflow.type || 'chat'
+		);
+		allTokens.push(...workflowTokens);
+	}
+
 	if (allTokens.length === 0) {
 		return;
 	}
+
+	// Check if we should expand the tokens section
+	const expandState = callbacks.getExpandState();
+	const shouldExpand = expandState.availableTokensExpanded === true;
 
 	// Create collapsible available tokens section
 	const sectionContainer = containerEl.createDiv('available-tokens-section');
 
 	const header = sectionContainer.createDiv('available-tokens-header');
 	const headerArrow = header.createSpan('available-tokens-arrow');
-	headerArrow.textContent = '▸';
+	headerArrow.textContent = shouldExpand ? '▾' : '▸';
 
 	const headerTitle = header.createSpan('available-tokens-title');
 	headerTitle.textContent = `Available tokens (${allTokens.length})`;
 
-	const content = sectionContainer.createDiv('available-tokens-content is-collapsed');
+	const contentClasses = shouldExpand ? 'available-tokens-content is-expanded' : 'available-tokens-content is-collapsed';
+	const content = sectionContainer.createDiv(contentClasses);
 
 	const description = content.createDiv('available-tokens-description-text');
 	description.textContent = 'Tokens available for use in prompts and output templates';
