@@ -1,5 +1,5 @@
 import { App, Notice, TFile } from 'obsidian';
-import { WorkflowConfig, LLMToolboxSettings, TranscriptionSourceType } from '../settings';
+import { WorkflowConfig, AIToolboxSettings, TranscriptionSourceType } from '../settings';
 import { createWorkflowProvider, ChatMessage, TranscriptionOptions, TranscriptionResult } from '../providers';
 import { videoPlatformRegistry } from './video-platforms';
 import { generateFilenameTimestamp } from '../utils/date-utils';
@@ -130,7 +130,7 @@ async function getPromptText(app: App, workflow: WorkflowConfig): Promise<string
  */
 async function executeDependencies(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig,
 	results: WorkflowResultsMap,
 	executionStack: Set<string>
@@ -194,7 +194,7 @@ async function executeDependencies(
  */
 export async function executeWorkflow(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig
 ): Promise<void> {
 	// Check for circular dependencies before starting
@@ -242,7 +242,7 @@ export async function executeWorkflow(
  */
 async function executeWorkflowInternal(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig,
 	dependencyResults: WorkflowResultsMap
 ): Promise<WorkflowExecutionResult> {
@@ -260,7 +260,7 @@ async function executeWorkflowInternal(
  */
 async function executeChatWorkflow(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig,
 	dependencyResults?: WorkflowResultsMap
 ): Promise<void> {
@@ -337,7 +337,7 @@ async function executeChatWorkflow(
  */
 async function executeChatWorkflowInternal(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig,
 	dependencyResults: WorkflowResultsMap
 ): Promise<WorkflowExecutionResult> {
@@ -405,7 +405,7 @@ async function executeChatWorkflowInternal(
  */
 async function executeTranscriptionWorkflow(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig,
 	_dependencyResults?: WorkflowResultsMap
 ): Promise<void> {
@@ -467,7 +467,7 @@ async function executeTranscriptionWorkflow(
  */
 async function executeTranscriptionWorkflowInternal(
 	app: App,
-	settings: LLMToolboxSettings,
+	settings: AIToolboxSettings,
 	workflow: WorkflowConfig,
 	_dependencyResults: WorkflowResultsMap
 ): Promise<WorkflowExecutionResult> {

@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { Buffer } from 'buffer';
 import { Notice } from 'obsidian';
-import { LLMToolboxSettings } from '../settings';
+import { AIToolboxSettings } from '../settings';
 import { videoPlatformRegistry, VideoMetadata } from './video-platforms';
 
 /**
@@ -198,9 +198,9 @@ export interface ExtractAudioResult {
 }
 
 /**
- * Converts LLMToolboxSettings to VideoProcessorConfig.
+ * Converts AIToolboxSettings to VideoProcessorConfig.
  */
-function settingsToProcessorConfig(settings: LLMToolboxSettings): VideoProcessorConfig {
+function settingsToProcessorConfig(settings: AIToolboxSettings): VideoProcessorConfig {
     return {
         ytdlpLocation: settings.ytdlpLocation,
         ffmpegLocation: settings.ffmpegLocation,
@@ -216,7 +216,7 @@ function settingsToProcessorConfig(settings: LLMToolboxSettings): VideoProcessor
  * Uses yt-dlp directly via child_process for audio extraction.
  * Requires yt-dlp and ffmpeg to be installed and available in PATH.
  */
-export async function extractAudioFromUrl(url: string, settings: LLMToolboxSettings): Promise<ExtractAudioResult | null> {
+export async function extractAudioFromUrl(url: string, settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
     try {
         if (!url || !url.trim()) {
             new Notice('URL is empty');
@@ -270,7 +270,7 @@ export async function extractAudioFromUrl(url: string, settings: LLMToolboxSetti
  * Uses yt-dlp directly via child_process for audio extraction.
  * Requires yt-dlp and ffmpeg to be installed and available in PATH.
  */
-export async function extractAudioFromClipboard(settings: LLMToolboxSettings): Promise<ExtractAudioResult | null> {
+export async function extractAudioFromClipboard(settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
     try {
         const clipboardText = await navigator.clipboard.readText();
 

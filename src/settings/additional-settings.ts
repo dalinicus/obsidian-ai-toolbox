@@ -1,5 +1,5 @@
 import { Setting } from "obsidian";
-import LLMToolboxPlugin from "../main";
+import AIToolboxPlugin from "../main";
 
 /**
  * Callbacks for the additional settings tab to communicate with the main settings tab
@@ -14,7 +14,7 @@ export interface AdditionalSettingsCallbacks {
  */
 export function displayAdditionalSettings(
 	containerEl: HTMLElement,
-	plugin: LLMToolboxPlugin,
+	plugin: AIToolboxPlugin,
 	callbacks: AdditionalSettingsCallbacks
 ): void {
 	const showAdvanced = callbacks.isAdvancedVisible();

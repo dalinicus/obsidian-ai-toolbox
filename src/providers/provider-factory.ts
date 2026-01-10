@@ -1,4 +1,4 @@
-import { LLMToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, WorkflowConfig, ProviderModelSelection } from '../settings/index';
+import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, WorkflowConfig, ProviderModelSelection } from '../settings/index';
 import { ModelProvider, ModelProviderConfig } from './types';
 import { AzureOpenAIModelProvider } from './azure-openai-provider';
 import { OpenAIModelProvider } from './openai-provider';
@@ -62,7 +62,7 @@ export function createModelProvider(config: ModelProviderConfig): ModelProvider 
  * @returns A configured ModelProvider, or null if not found
  * @throws ProviderCreationError if the provider cannot be created
  */
-function createProviderFromSelection(settings: LLMToolboxSettings, selection: ProviderModelSelection): ModelProvider | null {
+function createProviderFromSelection(settings: AIToolboxSettings, selection: ProviderModelSelection): ModelProvider | null {
 	const provider = settings.providers.find(p => p.id === selection.providerId);
 	if (!provider) {
 		return null;
@@ -85,7 +85,7 @@ function createProviderFromSelection(settings: LLMToolboxSettings, selection: Pr
  * @returns A configured ModelProvider for the workflow, or null if not configured
  * @throws ProviderCreationError if the provider cannot be created
  */
-export function createWorkflowProvider(settings: LLMToolboxSettings, workflow: WorkflowConfig): ModelProvider | null {
+export function createWorkflowProvider(settings: AIToolboxSettings, workflow: WorkflowConfig): ModelProvider | null {
 	if (!workflow.provider) {
 		return null;
 	}

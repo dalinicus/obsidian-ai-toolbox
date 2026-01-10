@@ -1,5 +1,5 @@
 import { Setting, setIcon, ButtonComponent, Notice } from "obsidian";
-import LLMToolboxPlugin from "../main";
+import AIToolboxPlugin from "../main";
 import {
 	AIProviderConfig,
 	AIProviderType,
@@ -156,7 +156,7 @@ async function testModel(provider: AIProviderConfig, model: AIModelConfig): Prom
  */
 export function displayProvidersSettings(
 	containerEl: HTMLElement,
-	plugin: LLMToolboxPlugin,
+	plugin: AIToolboxPlugin,
 	callbacks: ProviderSettingsCallbacks
 ): void {
 	// Add provider button
@@ -188,7 +188,7 @@ export function displayProvidersSettings(
 
 function displayProviderSettings(
 	containerEl: HTMLElement,
-	plugin: LLMToolboxPlugin,
+	plugin: AIToolboxPlugin,
 	provider: AIProviderConfig,
 	callbacks: ProviderSettingsCallbacks
 ): void {
@@ -306,7 +306,7 @@ function displayProviderSettings(
 
 function displayModelSettings(
 	containerEl: HTMLElement,
-	plugin: LLMToolboxPlugin,
+	plugin: AIToolboxPlugin,
 	provider: AIProviderConfig,
 	model: AIModelConfig,
 	callbacks: ProviderSettingsCallbacks
