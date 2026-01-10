@@ -1,5 +1,5 @@
 import { Notice, setIcon, Setting } from "obsidian";
-import AIToolboxPlugin from "../main";
+import LLMToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
 	WorkflowOutputType,
@@ -56,7 +56,7 @@ const PROMPT_SOURCE_OPTIONS: Record<PromptSourceType, string> = {
  */
 export function displayWorkflowsSettings(
 	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
 	// Add workflow button
@@ -90,7 +90,7 @@ export function displayWorkflowsSettings(
 
 function displayWorkflowSettings(
 	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
@@ -154,7 +154,7 @@ function displayWorkflowSettings(
  */
 function displayChatWorkflowSettings(
 	contentContainer: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks,
 	isExpanded: () => boolean
@@ -295,7 +295,7 @@ function displayChatWorkflowSettings(
 
 function displayWorkflowProviderSelection(
 	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig
 ): void {
 	const providers = plugin.settings.providers;
@@ -344,7 +344,7 @@ function displayWorkflowProviderSelection(
  */
 function displayTranscriptionProviderSelection(
 	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig
 ): void {
 	const providers = plugin.settings.providers;
@@ -392,7 +392,7 @@ function displayTranscriptionProviderSelection(
  */
 function displayTranscriptionWorkflowSettings(
 	contentContainer: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks,
 	isExpanded: () => boolean
@@ -553,7 +553,7 @@ function displayTranscriptionWorkflowSettings(
  */
 function displayContextSection(
 	contentContainer: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks,
 	isExpanded: () => boolean
@@ -638,7 +638,7 @@ function displayContextSection(
  */
 function displayWorkflowContextSection(
 	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks,
 	isExpanded: () => boolean
@@ -774,7 +774,7 @@ function renderTokenReference(
 function displayAvailableTokensSection(
 	containerEl: HTMLElement,
 	workflow: WorkflowConfig,
-	plugin: AIToolboxPlugin,
+	plugin: LLMToolboxPlugin,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
 	const contexts = workflow.contexts ?? [];

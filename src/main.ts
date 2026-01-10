@@ -1,10 +1,10 @@
 import { Notice, Plugin } from 'obsidian';
-import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings/index";
+import { DEFAULT_SETTINGS, LLMToolboxSettings, LLMToolboxSettingTab } from "./settings/index";
 import { WorkflowSuggesterModal } from "./components/workflow-suggester";
 import { executeWorkflow } from "./processing/workflow-executor";
 
-export default class AIToolboxPlugin extends Plugin {
-	settings: AIToolboxSettings;
+export default class LLMToolboxPlugin extends Plugin {
+	settings: LLMToolboxSettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -17,7 +17,7 @@ export default class AIToolboxPlugin extends Plugin {
 		});
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new AIToolboxSettingTab(this.app, this));
+		this.addSettingTab(new LLMToolboxSettingTab(this.app, this));
 	}
 
 	/**
@@ -38,7 +38,7 @@ export default class AIToolboxPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<AIToolboxSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<LLMToolboxSettings>);
 	}
 
 	async saveSettings() {

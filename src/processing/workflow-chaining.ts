@@ -1,5 +1,5 @@
 import { App, MarkdownView } from 'obsidian';
-import { WorkflowConfig, AIToolboxSettings, TimestampGranularity } from '../settings';
+import { WorkflowConfig, LLMToolboxSettings, TimestampGranularity } from '../settings';
 import { TranscriptionResult, TranscriptionChunk } from '../providers';
 
 /**
@@ -30,7 +30,7 @@ export interface DependencyExecutionContext {
     /** The Obsidian App instance */
     app: App;
     /** Plugin settings */
-    settings: AIToolboxSettings;
+    settings: LLMToolboxSettings;
     /** Results from executed dependencies */
     results: WorkflowResultsMap;
     /** Workflow IDs currently in the execution stack (for circular detection) */
@@ -43,7 +43,7 @@ export interface DependencyExecutionContext {
  */
 export function detectCircularDependency(
     workflow: WorkflowConfig,
-    settings: AIToolboxSettings,
+    settings: LLMToolboxSettings,
     visited: Set<string> = new Set(),
     path: string[] = []
 ): string[] {

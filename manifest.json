@@ -1,9 +1,9 @@
 {
-	"id": "ai-toolbox",
-	"name": "AI Toolbox",
-	"version": "1.0.3",
+	"id": "llm-toolbox",
+	"name": "LLM Toolbox",
+	"version": "1.0.5",
 	"minAppVersion": "0.15.0",
-	"description": "Personal collection of AI tools to enhance the Obsidian.md workflow.",
+	"description": "Personal collection of LLM tools to enhance the Obsidian.md workflow.",
 	"author": "dalinicus",
 	"authorUrl": "https://github.com/dalinicus",
 	"fundingUrl": "https://buymeacoffee.com/dalinicus",

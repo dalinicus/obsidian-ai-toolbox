@@ -1,6 +1,6 @@
-# AI Toolbox
+# LLM Toolbox
 
-A personal collection of AI tools to enhance the Obsidian.md workflow.
+A personal collection of LLM tools to enhance the Obsidian.md workflow.
 
 ## Features
 
@@ -37,7 +37,7 @@ pip install yt-dlp[curl_cffi]
 ## How to Use
 
 1. **Configure the plugin**:
-   - Go to **Settings → AI Toolbox**
+   - Go to **Settings → LLM Toolbox**
    - Enter your Azure OpenAI endpoint, API key, and deployment name
    - Configure optional settings (timestamps, language, output folder)
 
@@ -53,14 +53,14 @@ pip install yt-dlp[curl_cffi]
 
 1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat) if you haven't already
 2. Open **Settings → BRAT → Add Beta plugin**
-3. Enter this repository ID: `dalinicus/obsidian-ai-toolbox`
+3. Enter this repository ID: `dalinicus/obsidian-llm-toolbox`
 4. Click **Add Plugin**
 5. Enable the plugin in **Settings → Community plugins**
 
 ### Manual Installation
 
-1. Download the latest release from the [Releases page](https://github.com/dalinicus/obsidian-ai-toolbox/releases)
-2. Extract the files to your vault's plugins folder: `VaultFolder/.obsidian/plugins/ai-toolbox/`
+1. Download the latest release from the [Releases page](https://github.com/dalinicus/obsidian-llm-toolbox/releases)
+2. Extract the files to your vault's plugins folder: `VaultFolder/.obsidian/plugins/llm-toolbox/`
 3. Reload Obsidian
 4. Enable the plugin in **Settings → Community plugins**
 

@@ -1,5 +1,5 @@
 import { App } from 'obsidian';
-import { AIToolboxSettings, WorkflowConfig } from '../../settings';
+import { LLMToolboxSettings, WorkflowConfig } from '../../settings';
 import { VideoMetadata } from '../../processing';
 
 /**
@@ -22,7 +22,7 @@ export interface InputContext {
     /** The Obsidian App instance */
     app: App;
     /** Plugin settings */
-    settings: AIToolboxSettings;
+    settings: LLMToolboxSettings;
     /** The workflow configuration being executed */
     workflow: WorkflowConfig;
 }

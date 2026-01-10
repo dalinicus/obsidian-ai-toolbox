@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import AIToolboxPlugin from "../main";
+import LLMToolboxPlugin from "../main";
 import { SettingsTabType, ExpandOnNextRenderState } from "./types";
 import { displayProvidersSettings, ProviderSettingsCallbacks } from "./providers";
 import { displayWorkflowsSettings, WorkflowSettingsCallbacks } from "./workflows";
@@ -22,20 +22,20 @@ export type {
 	TimestampGranularity,
 	ChatContextType,
 	ChatContextConfig,
-	AIToolboxSettings,
+	LLMToolboxSettings,
 	SettingsTabType,
 	ExpandOnNextRenderState
 } from "./types";
 
-export class AIToolboxSettingTab extends PluginSettingTab {
-	plugin: AIToolboxPlugin;
+export class LLMToolboxSettingTab extends PluginSettingTab {
+	plugin: LLMToolboxPlugin;
 	private activeTab: SettingsTabType = 'providers';
 	// Track IDs that should start expanded on next render (cleared after use)
 	private expandOnNextRender: ExpandOnNextRenderState = {};
 	// Global advanced settings visibility state
 	private showAdvancedSettings = false;
 
-	constructor(app: App, plugin: AIToolboxPlugin) {
+	constructor(app: App, plugin: LLMToolboxPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}

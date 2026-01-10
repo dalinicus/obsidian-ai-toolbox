@@ -95,15 +95,16 @@ export interface TokenDefinitionOptions {
 /**
  * Get token definitions for a workflow type.
  * For transcription workflows, the transcriptionWithTimestamps token is excluded
- * when timestampGranularity is 'disabled'.
+ * when timestampGranularity is 'disabled' or undefined (default).
  */
 export function getTokenDefinitionsForType(
 	type: WorkflowType,
 	options?: TokenDefinitionOptions
 ): TokenDefinition[] {
 	if (type === 'transcription') {
-		// Filter out transcriptionWithTimestamps when granularity is disabled
-		if (options?.timestampGranularity === 'disabled') {
+		// Filter out transcriptionWithTimestamps when granularity is disabled or not set
+		const granularity = options?.timestampGranularity ?? 'disabled';
+		if (granularity === 'disabled') {
 			return TRANSCRIPTION_WORKFLOW_TOKENS.filter(
 				token => token.name !== 'transcriptionWithTimestamps'
 			);

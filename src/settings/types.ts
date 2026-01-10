@@ -152,7 +152,7 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	timestampGranularity: 'disabled'
 };
 
-export interface AIToolboxSettings {
+export interface LLMToolboxSettings {
 	impersonateBrowser: string;
 	ytdlpLocation: string;
 	ffmpegLocation: string;
@@ -171,7 +171,7 @@ export function generateId(): string {
 	return Math.random().toString(36).substring(2, 11);
 }
 
-export const DEFAULT_SETTINGS: AIToolboxSettings = {
+export const DEFAULT_SETTINGS: LLMToolboxSettings = {
 	impersonateBrowser: 'chrome',
 	ytdlpLocation: '',
 	ffmpegLocation: '',
