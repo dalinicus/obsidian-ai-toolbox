@@ -1,6 +1,7 @@
-import { Notice, TFile } from 'obsidian';
+import { TFile } from 'obsidian';
 import { OutputHandler, OutputContext } from './types';
 import { generateFilenameTimestamp } from '../../utils/date-utils';
+import { logNotice, LogCategory } from '../../logging';
 
 /**
  * Output handler that creates a new note containing the AI response.
@@ -57,7 +58,7 @@ export class NewNoteOutputHandler implements OutputHandler {
             await leaf.openFile(file);
         }
 
-        new Notice(`Created note: ${file.name}`);
+        logNotice(LogCategory.WORKFLOW, `Created note: ${file.name}`);
     }
 }
 

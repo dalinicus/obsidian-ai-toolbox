@@ -3,9 +3,9 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { Buffer } from 'buffer';
-import { Notice } from 'obsidian';
 import { AIToolboxSettings } from '../settings';
 import { videoPlatformRegistry, VideoMetadata } from './video-platforms';
+import { logNotice, LogCategory } from '../logging';
 
 /**
  * Configuration for video processing operations.
@@ -219,18 +219,18 @@ function settingsToProcessorConfig(settings: AIToolboxSettings): VideoProcessorC
 export async function extractAudioFromUrl(url: string, settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
     try {
         if (!url || !url.trim()) {
-            new Notice('URL is empty');
+            logNotice(LogCategory.TRANSCRIPTION, 'URL is empty');
             return null;
         }
 
         const trimmedUrl = url.trim();
 
         if (!videoPlatformRegistry.isValidVideoUrl(trimmedUrl)) {
-            new Notice('The provided text is not a valid video URL');
+            logNotice(LogCategory.TRANSCRIPTION, 'The provided text is not a valid video URL');
             return null;
         }
 
-        new Notice('Preparing video for transcription...');
+        logNotice(LogCategory.TRANSCRIPTION, 'Preparing video for transcription...');
 
         const handler = videoPlatformRegistry.findHandlerForUrl(trimmedUrl);
         const filenameTemplate = handler
@@ -243,7 +243,7 @@ export async function extractAudioFromUrl(url: string, settings: AIToolboxSettin
 
         const ytdlpResult = await runYtDlp(trimmedUrl, outputTemplate, config);
 
-        new Notice(`Audio extracted successfully!\nReady for transcription.\nSaved to: ${path.dirname(ytdlpResult.audioFilePath)}`);
+        logNotice(LogCategory.TRANSCRIPTION, `Audio extracted successfully!\nReady for transcription.\nSaved to: ${path.dirname(ytdlpResult.audioFilePath)}`);
 
         return {
             audioFilePath: ytdlpResult.audioFilePath,
@@ -257,9 +257,7 @@ export async function extractAudioFromUrl(url: string, settings: AIToolboxSettin
         };
 
     } catch (error) {
-        console.error('Video audio extraction error:', error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        new Notice(`Failed to extract audio for transcription: ${errorMessage}`);
+        logNotice(LogCategory.TRANSCRIPTION, `Failed to extract audio for transcription: ${error instanceof Error ? error.message : String(error)}`, error);
         return null;
     }
 }
@@ -275,16 +273,14 @@ export async function extractAudioFromClipboard(settings: AIToolboxSettings): Pr
         const clipboardText = await navigator.clipboard.readText();
 
         if (!clipboardText) {
-            new Notice('Clipboard is empty');
+            logNotice(LogCategory.TRANSCRIPTION, 'Clipboard is empty');
             return null;
         }
 
         return extractAudioFromUrl(clipboardText, settings);
 
     } catch (error) {
-        console.error('Clipboard read error:', error);
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        new Notice(`Failed to read clipboard: ${errorMessage}`);
+        logNotice(LogCategory.TRANSCRIPTION, `Failed to read clipboard: ${error instanceof Error ? error.message : String(error)}`, error);
         return null;
     }
 }

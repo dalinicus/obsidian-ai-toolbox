@@ -1,4 +1,4 @@
-import { App, Notice, TFile } from 'obsidian';
+import { App, TFile } from 'obsidian';
 import { WorkflowConfig, AIToolboxSettings, TranscriptionSourceType } from '../settings';
 import { createWorkflowProvider, ChatMessage, TranscriptionOptions, TranscriptionResult } from '../providers';
 import { videoPlatformRegistry } from './video-platforms';
@@ -30,6 +30,7 @@ import {
     hasContextTokens,
     formatTranscriptionWithTimestamps
 } from './workflow-chaining';
+import { logInfo, logDebug, logWarn, logNotice, LogCategory } from '../logging';
 
 /**
  * Create an output handler based on the workflow's output type.
@@ -101,21 +102,20 @@ async function getPromptText(app: App, workflow: WorkflowConfig): Promise<string
 	if (sourceType === 'from-file') {
 		const filePath = workflow.promptFilePath;
 		if (!filePath || !filePath.trim()) {
-			new Notice(`Workflow "${workflow.name}" has no prompt file configured. Please select a file in settings.`);
+			logNotice(LogCategory.WORKFLOW, `Workflow "${workflow.name}" has no prompt file configured. Please select a file in settings.`);
 			return null;
 		}
 
 		const file = app.vault.getAbstractFileByPath(filePath);
 		if (!file || !(file instanceof TFile)) {
-			new Notice(`Prompt file "${filePath}" not found in vault for workflow "${workflow.name}".`);
+			logNotice(LogCategory.WORKFLOW, `Prompt file "${filePath}" not found in vault for workflow "${workflow.name}".`);
 			return null;
 		}
 
 		try {
 			return await app.vault.read(file);
 		} catch (error) {
-			console.error('Error reading prompt file:', error);
-			new Notice(`Failed to read prompt file "${filePath}": ${error instanceof Error ? error.message : String(error)}`);
+			logNotice(LogCategory.WORKFLOW, `Failed to read prompt file "${filePath}": ${error instanceof Error ? error.message : String(error)}`, error);
 			return null;
 		}
 	}
@@ -146,13 +146,13 @@ async function executeDependencies(
 		// Check for circular dependency (already in execution stack)
 		if (executionStack.has(depId)) {
 			const depWorkflow = settings.workflows.find(w => w.id === depId);
-			new Notice(`Circular dependency detected: "${depWorkflow?.name ?? depId}" is already being executed.`);
+			logNotice(LogCategory.WORKFLOW, `Circular dependency detected: "${depWorkflow?.name ?? depId}" is already being executed.`);
 			return false;
 		}
 
 		const depWorkflow = settings.workflows.find(w => w.id === depId);
 		if (!depWorkflow) {
-			new Notice(`Dependency workflow not found: ${depId}`);
+			logNotice(LogCategory.WORKFLOW, `Dependency workflow not found: ${depId}`);
 			return false;
 		}
 
@@ -168,11 +168,11 @@ async function executeDependencies(
 		}
 
 		// Execute the dependency workflow
-		new Notice(`Executing dependency: ${depWorkflow.name}...`);
+		logNotice(LogCategory.WORKFLOW, `Executing dependency: ${depWorkflow.name}...`);
 		const result = await executeWorkflowInternal(app, settings, depWorkflow, results);
 
 		if (!result.success) {
-			new Notice(`Dependency workflow "${depWorkflow.name}" failed: ${result.error}`);
+			logNotice(LogCategory.WORKFLOW, `Dependency workflow "${depWorkflow.name}" failed: ${result.error}`);
 			return false;
 		}
 
@@ -197,11 +197,13 @@ export async function executeWorkflow(
 	settings: AIToolboxSettings,
 	workflow: WorkflowConfig
 ): Promise<void> {
+	logInfo(LogCategory.WORKFLOW, `Starting workflow: ${workflow.name}`, { type: workflow.type, id: workflow.id });
+
 	// Check for circular dependencies before starting
 	if (hasWorkflowDependencies(workflow)) {
 		const cycle = detectCircularDependency(workflow, settings);
 		if (cycle.length > 0) {
-			new Notice(`Circular dependency detected: ${cycle.join(' → ')}`);
+			logNotice(LogCategory.WORKFLOW, `Circular dependency detected: ${cycle.join(' → ')}`);
 			return;
 		}
 
@@ -266,7 +268,7 @@ async function executeChatWorkflow(
 ): Promise<void> {
 	// Validate workflow has a provider configured
 	if (!workflow.provider) {
-		new Notice(`Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
+		logNotice(LogCategory.WORKFLOW, `Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
 		return;
 	}
 
@@ -289,31 +291,33 @@ async function executeChatWorkflow(
 
 	// Validate workflow has text
 	if (!promptText.trim()) {
-		new Notice(`Workflow "${workflow.name}" has no prompt text. Please add prompt text in settings.`);
+		logNotice(LogCategory.WORKFLOW, `Workflow "${workflow.name}" has no prompt text. Please add prompt text in settings.`);
 		return;
 	}
 
 	// Create the provider
 	const provider = createWorkflowProvider(settings, workflow);
 	if (!provider) {
-		new Notice(`Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
+		logNotice(LogCategory.WORKFLOW, `Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
 		return;
 	}
 
 	// Validate provider supports chat
 	if (!provider.supportsChat()) {
-		new Notice(`The provider for workflow "${workflow.name}" does not support chat. Please select a chat-capable model.`);
+		logNotice(LogCategory.WORKFLOW, `The provider for workflow "${workflow.name}" does not support chat. Please select a chat-capable model.`);
 		return;
 	}
 
 	try {
-		new Notice(`Executing workflow: ${workflow.name}...`);
+		logNotice(LogCategory.WORKFLOW, `Executing workflow: ${workflow.name}...`);
+		logDebug(LogCategory.WORKFLOW, `Sending chat request to provider`);
 
 		const messages: ChatMessage[] = [
 			{ role: 'user', content: promptText }
 		];
 
 		const result = await provider.sendChat(messages);
+		logInfo(LogCategory.WORKFLOW, `Chat workflow completed: ${workflow.name}`);
 
 		const outputType = workflow.outputType || 'popup';
 		const handler = createOutputHandler(outputType);
@@ -326,9 +330,7 @@ async function executeChatWorkflow(
 		await handler.handleOutput(result.content, context);
 
 	} catch (error) {
-		console.error('Workflow execution error:', error);
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		new Notice(`Failed to execute workflow: ${errorMessage}`);
+		logNotice(LogCategory.WORKFLOW, `Workflow execution error: ${workflow.name}`, error);
 	}
 }
 
@@ -410,18 +412,18 @@ async function executeTranscriptionWorkflow(
 	_dependencyResults?: WorkflowResultsMap
 ): Promise<void> {
 	if (!workflow.provider) {
-		new Notice(`Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
+		logNotice(LogCategory.TRANSCRIPTION, `Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
 		return;
 	}
 
 	const provider = createWorkflowProvider(settings, workflow);
 	if (!provider) {
-		new Notice(`Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
+		logNotice(LogCategory.TRANSCRIPTION, `Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
 		return;
 	}
 
 	if (!provider.supportsTranscription()) {
-		new Notice(`The provider for workflow "${workflow.name}" does not support transcription. Please select a transcription-capable model.`);
+		logNotice(LogCategory.TRANSCRIPTION, `The provider for workflow "${workflow.name}" does not support transcription. Please select a transcription-capable model.`);
 		return;
 	}
 
@@ -435,7 +437,8 @@ async function executeTranscriptionWorkflow(
 			return;
 		}
 
-		new Notice(`Transcribing audio...`);
+		logNotice(LogCategory.TRANSCRIPTION, `Transcribing audio...`);
+		logDebug(LogCategory.TRANSCRIPTION, `Transcribing audio file: ${inputResult.audioFilePath}`);
 
 		const transcriptionOptions: TranscriptionOptions = {
 			timestampGranularity: workflow.timestampGranularity ?? 'disabled',
@@ -443,6 +446,8 @@ async function executeTranscriptionWorkflow(
 		};
 
 		const transcriptionResult = await provider.transcribeAudio(inputResult.audioFilePath, transcriptionOptions);
+		logInfo(LogCategory.TRANSCRIPTION, `Transcription completed: ${workflow.name}`);
+
 		// Use timestamped version for display output if available, otherwise plain text
 		const formattedText = transcriptionResult.chunks.length > 0
 			? formatTranscriptionWithTimestamps(transcriptionResult.chunks)
@@ -456,9 +461,7 @@ async function executeTranscriptionWorkflow(
 		await handler.handleOutput(formattedText, context);
 
 	} catch (error) {
-		console.error('Transcription workflow execution error:', error);
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		new Notice(`Failed to transcribe audio: ${errorMessage}`);
+		logNotice(LogCategory.TRANSCRIPTION, `Transcription workflow error: ${workflow.name}`, error);
 	}
 }
 

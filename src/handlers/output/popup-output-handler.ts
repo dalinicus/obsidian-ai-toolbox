@@ -1,5 +1,6 @@
-import { App, Modal, Notice } from 'obsidian';
+import { App, Modal } from 'obsidian';
 import { OutputHandler, OutputContext } from './types';
+import { logNotice, LogCategory } from '../../logging';
 
 /**
  * Modal to display the AI response from a workflow execution.
@@ -30,7 +31,7 @@ export class WorkflowResultModal extends Modal {
         const copyButton = buttonContainer.createEl('button', { text: 'Copy to clipboard' });
         copyButton.addEventListener('click', () => {
             void navigator.clipboard.writeText(this.response).then(() => {
-                new Notice('Response copied to clipboard');
+                logNotice(LogCategory.WORKFLOW, 'Response copied to clipboard');
             });
         });
 
