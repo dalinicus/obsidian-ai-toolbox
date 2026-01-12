@@ -10,6 +10,8 @@ export {
 
 export type {
     TranscriptionApiResponse,
+    TranscriptionSegment,
+    TranscriptionWord,
     TranscriptionChunk,
     TranscriptionResult,
     FormField,

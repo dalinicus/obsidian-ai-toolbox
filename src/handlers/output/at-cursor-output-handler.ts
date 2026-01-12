@@ -1,5 +1,6 @@
-import { MarkdownView, Notice } from 'obsidian';
+import { MarkdownView } from 'obsidian';
 import { OutputHandler, OutputContext } from './types';
+import { logNotice, LogCategory } from '../../logging';
 
 /**
  * Output handler that inserts the AI response at the current cursor position
@@ -9,7 +10,7 @@ export class AtCursorOutputHandler implements OutputHandler {
     async handleOutput(responseText: string, context: OutputContext): Promise<void> {
         const activeView = context.app.workspace.getActiveViewOfType(MarkdownView);
         if (!activeView) {
-            new Notice('No active editor. Please open a note first.');
+            logNotice(LogCategory.WORKFLOW, 'No active editor. Please open a note first.');
             return;
         }
 
@@ -20,12 +21,12 @@ export class AtCursorOutputHandler implements OutputHandler {
             const from = editor.getCursor('from');
             editor.replaceSelection(responseText);
             this.moveCursorToEndOfText(editor, from, responseText);
-            new Notice('Response replaced selection');
+            logNotice(LogCategory.WORKFLOW, 'Response replaced selection');
         } else {
             const cursor = editor.getCursor();
             editor.replaceRange(responseText, cursor);
             this.moveCursorToEndOfText(editor, cursor, responseText);
-            new Notice('Response inserted at cursor');
+            logNotice(LogCategory.WORKFLOW, 'Response inserted at cursor');
         }
     }
 

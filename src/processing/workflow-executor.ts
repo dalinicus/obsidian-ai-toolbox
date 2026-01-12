@@ -1,6 +1,5 @@
-import { App, Notice, TFile } from 'obsidian';
-import { WorkflowConfig, AIToolboxSettings, TranscriptionSourceType } from '../settings';
-import { createWorkflowProvider, ChatMessage, TranscriptionOptions, TranscriptionResult } from '../providers';
+import { App } from 'obsidian';
+import { WorkflowConfig, AIToolboxSettings } from '../settings';
 import { videoPlatformRegistry } from './video-platforms';
 import { generateFilenameTimestamp } from '../utils/date-utils';
 import {
@@ -8,148 +7,83 @@ import {
     OutputContext,
     NewNoteOutputHandler,
     AtCursorOutputHandler,
-    PopupOutputHandler,
-    InputHandler,
-    InputContext,
-    InputResult,
-    VaultFileInputHandler,
-    ClipboardUrlInputHandler,
-    SelectionUrlInputHandler
+    PopupOutputHandler
 } from '../handlers';
 import {
     WorkflowExecutionResult,
     WorkflowResultsMap,
     detectCircularDependency,
     hasWorkflowDependencies,
-    replaceWorkflowTokens,
-    createChatWorkflowTokens,
-    createTranscriptionWorkflowTokens,
     getDependencyWorkflowIds,
     gatherContextValues,
-    replaceContextTokens,
-    hasContextTokens
+    ContextTokenValues
 } from './workflow-chaining';
+import {
+    ActionExecutionResult,
+    ActionResultsMap,
+    ActionExecutionContext,
+    executeAction
+} from './action-executor';
+import { logInfo, logNotice, LogCategory } from '../logging';
 
 /**
  * Create an output handler based on the workflow's output type.
  */
 function createOutputHandler(outputType: string): OutputHandler {
-	switch (outputType) {
-		case 'new-note':
-			return new NewNoteOutputHandler();
-		case 'at-cursor':
-			return new AtCursorOutputHandler();
-		case 'popup':
-		default:
-			return new PopupOutputHandler();
-	}
+    switch (outputType) {
+        case 'new-note':
+            return new NewNoteOutputHandler();
+        case 'at-cursor':
+            return new AtCursorOutputHandler();
+        case 'popup':
+        default:
+            return new PopupOutputHandler();
+    }
 }
 
 /**
- * Create an input handler based on the transcription source type.
+ * Generate a note title based on the final action result.
  */
-function createInputHandler(sourceType: TranscriptionSourceType): InputHandler {
-	switch (sourceType) {
-		case 'select-file-from-vault':
-			return new VaultFileInputHandler();
-		case 'url-from-clipboard':
-			return new ClipboardUrlInputHandler();
-		case 'url-from-selection':
-			return new SelectionUrlInputHandler();
-		default:
-			return new VaultFileInputHandler();
-	}
+function generateNoteTitle(result: ActionExecutionResult, workflowName: string): string {
+    const timestamp = generateFilenameTimestamp();
+
+    if (result.actionType === 'transcription' && result.metadata?.inputResult) {
+        const inputResult = result.metadata.inputResult;
+        if (inputResult.sourceUrl) {
+            const handler = videoPlatformRegistry.findHandlerForUrl(inputResult.sourceUrl);
+            const metadata = inputResult.metadata;
+
+            if (handler?.platformId === 'tiktok') {
+                const author = metadata?.uploader || 'Unknown';
+                return `TikTok by ${author} - ${timestamp}`;
+            }
+
+            if (handler?.platformId === 'youtube') {
+                const title = metadata?.title || 'Video';
+                const author = metadata?.uploader || 'Unknown';
+                return `${title} - ${author} - ${timestamp}`;
+            }
+        }
+    }
+
+    return `${workflowName} - ${timestamp}`;
 }
 
 /**
- * Format a timestamp in seconds to MM:SS or HH:MM:SS format.
+ * Get the final output text from action results.
+ * Uses the response token from the last action.
  */
-function formatTimestamp(seconds: number): string {
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const secs = Math.floor(seconds % 60);
-
-	if (hours > 0) {
-		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-	}
-	return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-}
-
-/**
- * Format a transcription result, optionally including timestamps.
- * When timestamps are included and chunks are available, formats each segment
- * with its start time prefix.
- */
-function formatTranscriptionResult(result: TranscriptionResult, includeTimestamps: boolean): string {
-	if (!includeTimestamps || !result.chunks || result.chunks.length === 0) {
-		return result.text;
-	}
-
-	return result.chunks
-		.map(chunk => `[${formatTimestamp(chunk.timestamp[0])}] ${chunk.text}`)
-		.join('\n');
-}
-
-/**
- * Generate a note title for transcription output based on input source.
- * - TikTok: "TikTok by <Author> - <Timestamp>"
- * - YouTube: "<Video Title> - <Author> - <Timestamp>"
- * - Vault file/fallback: "<Workflow Name> - <Timestamp>"
- */
-function generateTranscriptionNoteTitle(inputResult: InputResult, workflowName: string): string {
-	const timestamp = generateFilenameTimestamp();
-
-	if (!inputResult.sourceUrl) {
-		return `${workflowName} - ${timestamp}`;
-	}
-
-	const handler = videoPlatformRegistry.findHandlerForUrl(inputResult.sourceUrl);
-	const metadata = inputResult.metadata;
-
-	if (handler?.platformId === 'tiktok') {
-		const author = metadata?.uploader || 'Unknown';
-		return `TikTok by ${author} - ${timestamp}`;
-	}
-
-	if (handler?.platformId === 'youtube') {
-		const title = metadata?.title || 'Video';
-		const author = metadata?.uploader || 'Unknown';
-		return `${title} - ${author} - ${timestamp}`;
-	}
-
-	return `${workflowName} - ${timestamp}`;
-}
-
-/**
- * Get the prompt text for a workflow, loading from file if needed.
- */
-async function getPromptText(app: App, workflow: WorkflowConfig): Promise<string | null> {
-	const sourceType = workflow.promptSourceType ?? 'inline';
-
-	if (sourceType === 'from-file') {
-		const filePath = workflow.promptFilePath;
-		if (!filePath || !filePath.trim()) {
-			new Notice(`Workflow "${workflow.name}" has no prompt file configured. Please select a file in settings.`);
-			return null;
-		}
-
-		const file = app.vault.getAbstractFileByPath(filePath);
-		if (!file || !(file instanceof TFile)) {
-			new Notice(`Prompt file "${filePath}" not found in vault for workflow "${workflow.name}".`);
-			return null;
-		}
-
-		try {
-			return await app.vault.read(file);
-		} catch (error) {
-			console.error('Error reading prompt file:', error);
-			new Notice(`Failed to read prompt file "${filePath}": ${error instanceof Error ? error.message : String(error)}`);
-			return null;
-		}
-	}
-
-	// Default: use inline prompt text
-	return workflow.promptText;
+function getFinalOutputText(lastResult: ActionExecutionResult): string {
+    if (lastResult.actionType === 'chat') {
+        return lastResult.tokens['response'] || '';
+    } else {
+        // For transcription, prefer timestamped version if available
+        const timestamped = lastResult.tokens['transcriptionWithTimestamps'];
+        if (timestamped) {
+            return timestamped;
+        }
+        return lastResult.tokens['transcription'] || '';
+    }
 }
 
 /**
@@ -157,111 +91,160 @@ async function getPromptText(app: App, workflow: WorkflowConfig): Promise<string
  * Handles circular dependency detection and proper execution order.
  */
 async function executeDependencies(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig,
-	results: WorkflowResultsMap,
-	executionStack: Set<string>
+    app: App,
+    settings: AIToolboxSettings,
+    workflow: WorkflowConfig,
+    results: WorkflowResultsMap,
+    executionStack: Set<string>
 ): Promise<boolean> {
-	const dependencyIds = getDependencyWorkflowIds(workflow);
+    const dependencyIds = getDependencyWorkflowIds(workflow);
 
-	for (const depId of dependencyIds) {
-		// Skip if already executed
-		if (results.has(depId)) {
-			continue;
-		}
+    for (const depId of dependencyIds) {
+        if (results.has(depId)) {
+            continue;
+        }
 
-		// Check for circular dependency (already in execution stack)
-		if (executionStack.has(depId)) {
-			const depWorkflow = settings.workflows.find(w => w.id === depId);
-			new Notice(`Circular dependency detected: "${depWorkflow?.name ?? depId}" is already being executed.`);
-			return false;
-		}
+        if (executionStack.has(depId)) {
+            const depWorkflow = settings.workflows.find(w => w.id === depId);
+            logNotice(LogCategory.WORKFLOW, `Circular dependency detected: "${depWorkflow?.name ?? depId}" is already being executed.`);
+            return false;
+        }
 
-		const depWorkflow = settings.workflows.find(w => w.id === depId);
-		if (!depWorkflow) {
-			new Notice(`Dependency workflow not found: ${depId}`);
-			return false;
-		}
+        const depWorkflow = settings.workflows.find(w => w.id === depId);
+        if (!depWorkflow) {
+            logNotice(LogCategory.WORKFLOW, `Dependency workflow not found: ${depId}`);
+            return false;
+        }
 
-		// Add to execution stack
-		executionStack.add(depId);
+        executionStack.add(depId);
 
-		// Recursively execute this dependency's dependencies first
-		if (hasWorkflowDependencies(depWorkflow)) {
-			const depSuccess = await executeDependencies(app, settings, depWorkflow, results, executionStack);
-			if (!depSuccess) {
-				return false;
-			}
-		}
+        if (hasWorkflowDependencies(depWorkflow)) {
+            const depSuccess = await executeDependencies(app, settings, depWorkflow, results, executionStack);
+            if (!depSuccess) {
+                return false;
+            }
+        }
 
-		// Execute the dependency workflow
-		new Notice(`Executing dependency: ${depWorkflow.name}...`);
-		const result = await executeWorkflowInternal(app, settings, depWorkflow, results);
+        logNotice(LogCategory.WORKFLOW, `Executing dependency: ${depWorkflow.name}...`);
+        const result = await executeWorkflowInternal(app, settings, depWorkflow, results);
 
-		if (!result.success) {
-			new Notice(`Dependency workflow "${depWorkflow.name}" failed: ${result.error}`);
-			return false;
-		}
+        if (!result.success) {
+            logNotice(LogCategory.WORKFLOW, `Dependency workflow "${depWorkflow.name}" failed: ${result.error}`);
+            return false;
+        }
 
-		results.set(depId, result);
-		executionStack.delete(depId);
-	}
+        results.set(depId, result);
+        executionStack.delete(depId);
+    }
 
-	return true;
+    return true;
 }
 
 /**
- * Execute a workflow using its configured provider and display the result.
- * Routes to the appropriate execution function based on workflow type.
- * Handles workflow dependency chains by executing dependencies first.
+ * Execute a workflow by running all its actions sequentially.
+ * Each action receives the accumulated results from previous actions.
  *
  * @param app - Obsidian App instance
  * @param settings - Plugin settings
  * @param workflow - The workflow configuration to execute
  */
 export async function executeWorkflow(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig
+    app: App,
+    settings: AIToolboxSettings,
+    workflow: WorkflowConfig
 ): Promise<void> {
-	// Check for circular dependencies before starting
-	if (hasWorkflowDependencies(workflow)) {
-		const cycle = detectCircularDependency(workflow, settings);
-		if (cycle.length > 0) {
-			new Notice(`Circular dependency detected: ${cycle.join(' → ')}`);
-			return;
-		}
+    logInfo(LogCategory.WORKFLOW, `Starting workflow: ${workflow.name}`, { id: workflow.id, actionCount: workflow.actions.length });
 
-		// Execute all dependencies first
-		const results: WorkflowResultsMap = new Map();
-		const executionStack = new Set<string>();
-		executionStack.add(workflow.id);
+    if (workflow.actions.length === 0) {
+        logNotice(LogCategory.WORKFLOW, `Workflow "${workflow.name}" has no actions. Please add actions in settings.`);
+        return;
+    }
 
-		const dependenciesSuccess = await executeDependencies(
-			app, settings, workflow, results, executionStack
-		);
+    // Check for circular dependencies before starting
+    if (hasWorkflowDependencies(workflow)) {
+        const cycle = detectCircularDependency(workflow, settings);
+        if (cycle.length > 0) {
+            logNotice(LogCategory.WORKFLOW, `Circular dependency detected: ${cycle.join(' → ')}`);
+            return;
+        }
+    }
 
-		if (!dependenciesSuccess) {
-			return;
-		}
+    // Execute all dependencies first
+    const dependencyResults: WorkflowResultsMap = new Map();
+    if (hasWorkflowDependencies(workflow)) {
+        const executionStack = new Set<string>();
+        executionStack.add(workflow.id);
 
-		// Execute main workflow with dependency results
-		const workflowType = workflow.type || 'chat';
-		if (workflowType === 'transcription') {
-			await executeTranscriptionWorkflow(app, settings, workflow, results);
-		} else {
-			await executeChatWorkflow(app, settings, workflow, results);
-		}
-	} else {
-		// No dependencies - execute directly
-		const workflowType = workflow.type || 'chat';
-		if (workflowType === 'transcription') {
-			await executeTranscriptionWorkflow(app, settings, workflow);
-		} else {
-			await executeChatWorkflow(app, settings, workflow);
-		}
-	}
+        const dependenciesSuccess = await executeDependencies(
+            app, settings, workflow, dependencyResults, executionStack
+        );
+
+        if (!dependenciesSuccess) {
+            return;
+        }
+    }
+
+    // Convert dependency results to ActionExecutionResult format
+    const dependencyActionResults: ActionResultsMap = new Map();
+    for (const [workflowId, result] of dependencyResults) {
+        dependencyActionResults.set(workflowId, {
+            actionId: workflowId,
+            actionType: result.workflowType,
+            success: result.success,
+            error: result.error,
+            tokens: result.tokens
+        });
+    }
+
+    // Gather workflow context values once at the start (clipboard, selection, etc.)
+    const workflowContext: ContextTokenValues = await gatherContextValues(app);
+
+    // Execute actions sequentially
+    const actionResults: ActionResultsMap = new Map();
+    let lastResult: ActionExecutionResult | null = null;
+
+    logNotice(LogCategory.WORKFLOW, `Executing workflow: ${workflow.name}...`);
+
+    for (const action of workflow.actions) {
+        const context: ActionExecutionContext = {
+            app,
+            settings,
+            previousResults: actionResults,
+            dependencyResults: dependencyActionResults,
+            workflowName: workflow.name,
+            workflowContext
+        };
+
+        const result = await executeAction(action, context);
+
+        if (!result.success) {
+            logNotice(LogCategory.WORKFLOW, `Action "${action.name}" failed: ${result.error}`);
+            return;
+        }
+
+        actionResults.set(action.id, result);
+        lastResult = result;
+    }
+
+    if (!lastResult) {
+        return;
+    }
+
+    logInfo(LogCategory.WORKFLOW, `Workflow completed: ${workflow.name}`);
+
+    // Handle output
+    const outputText = getFinalOutputText(lastResult);
+    const noteTitle = generateNoteTitle(lastResult, workflow.name);
+
+    const outputType = workflow.outputType || 'popup';
+    const handler = createOutputHandler(outputType);
+    const context: OutputContext = {
+        app,
+        workflow,
+        noteTitle
+    };
+
+    await handler.handleOutput(outputText, context);
 }
 
 /**
@@ -269,278 +252,62 @@ export async function executeWorkflow(
  * Used when executing workflows as dependencies.
  */
 async function executeWorkflowInternal(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig,
-	dependencyResults: WorkflowResultsMap
+    app: App,
+    settings: AIToolboxSettings,
+    workflow: WorkflowConfig,
+    _dependencyResults: WorkflowResultsMap
 ): Promise<WorkflowExecutionResult> {
-	const workflowType = workflow.type || 'chat';
+    const baseResult: WorkflowExecutionResult = {
+        workflowId: workflow.id,
+        workflowType: 'chat',
+        success: false,
+        tokens: {}
+    };
 
-	if (workflowType === 'transcription') {
-		return await executeTranscriptionWorkflowInternal(app, settings, workflow, dependencyResults);
-	} else {
-		return await executeChatWorkflowInternal(app, settings, workflow, dependencyResults);
-	}
-}
+    if (workflow.actions.length === 0) {
+        return { ...baseResult, error: 'No actions configured' };
+    }
 
-/**
- * Execute a chat workflow (displays output to user).
- */
-async function executeChatWorkflow(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig,
-	dependencyResults?: WorkflowResultsMap
-): Promise<void> {
-	// Validate workflow has a provider configured
-	if (!workflow.provider) {
-		new Notice(`Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
-		return;
-	}
+    // Gather workflow context values once at the start
+    const workflowContext: ContextTokenValues = await gatherContextValues(app);
 
-	// Get the prompt text (from file or inline)
-	let promptText = await getPromptText(app, workflow);
-	if (promptText === null) {
-		return; // Error already shown to user
-	}
+    // Execute actions sequentially
+    const actionResults: ActionResultsMap = new Map();
 
-	// Replace workflow context tokens if we have dependency results
-	if (dependencyResults && dependencyResults.size > 0) {
-		promptText = replaceWorkflowTokens(promptText, dependencyResults);
-	}
+    for (const action of workflow.actions) {
+        const context: ActionExecutionContext = {
+            app,
+            settings,
+            previousResults: actionResults,
+            dependencyResults: new Map(),
+            workflowName: workflow.name,
+            workflowContext
+        };
 
-	// Replace context tokens ({{selection}}, {{clipboard}}, etc.) with actual values
-	if (hasContextTokens(promptText)) {
-		const contextValues = await gatherContextValues(app);
-		promptText = replaceContextTokens(promptText, contextValues);
-	}
+        const result = await executeAction(action, context);
 
-	// Validate workflow has text
-	if (!promptText.trim()) {
-		new Notice(`Workflow "${workflow.name}" has no prompt text. Please add prompt text in settings.`);
-		return;
-	}
+        if (!result.success) {
+            return { ...baseResult, error: result.error };
+        }
 
-	// Create the provider
-	const provider = createWorkflowProvider(settings, workflow);
-	if (!provider) {
-		new Notice(`Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
-		return;
-	}
+        actionResults.set(action.id, result);
+    }
 
-	// Validate provider supports chat
-	if (!provider.supportsChat()) {
-		new Notice(`The provider for workflow "${workflow.name}" does not support chat. Please select a chat-capable model.`);
-		return;
-	}
+    // Get the last action's result
+    const lastAction = workflow.actions[workflow.actions.length - 1];
+    if (!lastAction) {
+        return { ...baseResult, error: 'No actions configured' };
+    }
+    const lastResult = actionResults.get(lastAction.id);
 
-	try {
-		new Notice(`Executing workflow: ${workflow.name}...`);
+    if (!lastResult) {
+        return { ...baseResult, error: 'No result from last action' };
+    }
 
-		const messages: ChatMessage[] = [
-			{ role: 'user', content: promptText }
-		];
-
-		const result = await provider.sendChat(messages);
-
-		const outputType = workflow.outputType || 'popup';
-		const handler = createOutputHandler(outputType);
-		const context: OutputContext = {
-			app,
-			workflow,
-			promptText
-		};
-
-		await handler.handleOutput(result.content, context);
-
-	} catch (error) {
-		console.error('Workflow execution error:', error);
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		new Notice(`Failed to execute workflow: ${errorMessage}`);
-	}
-}
-
-/**
- * Internal chat workflow execution that returns a result for chaining.
- */
-async function executeChatWorkflowInternal(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig,
-	dependencyResults: WorkflowResultsMap
-): Promise<WorkflowExecutionResult> {
-	const baseResult: WorkflowExecutionResult = {
-		workflowId: workflow.id,
-		workflowType: 'chat',
-		success: false,
-		tokens: {}
-	};
-
-	if (!workflow.provider) {
-		return { ...baseResult, error: 'No provider configured' };
-	}
-
-	let promptText = await getPromptText(app, workflow);
-	if (promptText === null) {
-		return { ...baseResult, error: 'Failed to load prompt text' };
-	}
-
-	// Replace workflow context tokens
-	if (dependencyResults.size > 0) {
-		promptText = replaceWorkflowTokens(promptText, dependencyResults);
-	}
-
-	// Replace context tokens ({{selection}}, {{clipboard}}, etc.) with actual values
-	if (hasContextTokens(promptText)) {
-		const contextValues = await gatherContextValues(app);
-		promptText = replaceContextTokens(promptText, contextValues);
-	}
-
-	if (!promptText.trim()) {
-		return { ...baseResult, error: 'Empty prompt text' };
-	}
-
-	const provider = createWorkflowProvider(settings, workflow);
-	if (!provider) {
-		return { ...baseResult, error: 'Provider not found' };
-	}
-
-	if (!provider.supportsChat()) {
-		return { ...baseResult, error: 'Provider does not support chat' };
-	}
-
-	try {
-		const messages: ChatMessage[] = [
-			{ role: 'user', content: promptText }
-		];
-
-		const result = await provider.sendChat(messages);
-
-		return {
-			...baseResult,
-			success: true,
-			tokens: createChatWorkflowTokens(promptText, result.content)
-		};
-	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		return { ...baseResult, error: errorMessage };
-	}
-}
-
-/**
- * Execute a transcription workflow (displays output to user).
- * Routes to the appropriate input handler based on workflow.transcriptionContext.sourceType.
- */
-async function executeTranscriptionWorkflow(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig,
-	_dependencyResults?: WorkflowResultsMap
-): Promise<void> {
-	if (!workflow.provider) {
-		new Notice(`Workflow "${workflow.name}" has no provider configured. Please configure a provider in settings.`);
-		return;
-	}
-
-	const provider = createWorkflowProvider(settings, workflow);
-	if (!provider) {
-		new Notice(`Could not find the configured provider for workflow "${workflow.name}". Please check your settings.`);
-		return;
-	}
-
-	if (!provider.supportsTranscription()) {
-		new Notice(`The provider for workflow "${workflow.name}" does not support transcription. Please select a transcription-capable model.`);
-		return;
-	}
-
-	const sourceType: TranscriptionSourceType = workflow.transcriptionContext?.sourceType ?? 'url-from-clipboard';
-	const inputHandler = createInputHandler(sourceType);
-	const inputContext: InputContext = { app, settings, workflow };
-
-	try {
-		const inputResult = await inputHandler.getInput(inputContext);
-		if (!inputResult) {
-			return;
-		}
-
-		new Notice(`Transcribing audio...`);
-
-		const transcriptionOptions: TranscriptionOptions = {
-			includeTimestamps: workflow.includeTimestamps ?? true,
-			language: workflow.language || undefined
-		};
-
-		const transcriptionResult = await provider.transcribeAudio(inputResult.audioFilePath, transcriptionOptions);
-		const formattedText = formatTranscriptionResult(transcriptionResult, workflow.includeTimestamps ?? true);
-		const noteTitle = generateTranscriptionNoteTitle(inputResult, workflow.name);
-
-		const outputType = workflow.outputType || 'new-note';
-		const handler = createOutputHandler(outputType);
-		const context: OutputContext = { app, workflow, noteTitle };
-
-		await handler.handleOutput(formattedText, context);
-
-	} catch (error) {
-		console.error('Transcription workflow execution error:', error);
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		new Notice(`Failed to transcribe audio: ${errorMessage}`);
-	}
-}
-
-/**
- * Internal transcription workflow execution that returns a result for chaining.
- */
-async function executeTranscriptionWorkflowInternal(
-	app: App,
-	settings: AIToolboxSettings,
-	workflow: WorkflowConfig,
-	_dependencyResults: WorkflowResultsMap
-): Promise<WorkflowExecutionResult> {
-	const baseResult: WorkflowExecutionResult = {
-		workflowId: workflow.id,
-		workflowType: 'transcription',
-		success: false,
-		tokens: {}
-	};
-
-	if (!workflow.provider) {
-		return { ...baseResult, error: 'No provider configured' };
-	}
-
-	const provider = createWorkflowProvider(settings, workflow);
-	if (!provider) {
-		return { ...baseResult, error: 'Provider not found' };
-	}
-
-	if (!provider.supportsTranscription()) {
-		return { ...baseResult, error: 'Provider does not support transcription' };
-	}
-
-	const sourceType: TranscriptionSourceType = workflow.transcriptionContext?.sourceType ?? 'url-from-clipboard';
-	const inputHandler = createInputHandler(sourceType);
-	const inputContext: InputContext = { app, settings, workflow };
-
-	try {
-		const inputResult = await inputHandler.getInput(inputContext);
-		if (!inputResult) {
-			return { ...baseResult, error: 'No input provided or cancelled' };
-		}
-
-		const transcriptionOptions: TranscriptionOptions = {
-			includeTimestamps: workflow.includeTimestamps ?? true,
-			language: workflow.language || undefined
-		};
-
-		const transcriptionResult = await provider.transcribeAudio(inputResult.audioFilePath, transcriptionOptions);
-		const formattedText = formatTranscriptionResult(transcriptionResult, workflow.includeTimestamps ?? true);
-
-		return {
-			...baseResult,
-			success: true,
-			tokens: createTranscriptionWorkflowTokens(formattedText, inputResult.metadata)
-		};
-	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		return { ...baseResult, error: errorMessage };
-	}
+    return {
+        workflowId: workflow.id,
+        workflowType: lastResult.actionType,
+        success: true,
+        tokens: lastResult.tokens
+    };
 }

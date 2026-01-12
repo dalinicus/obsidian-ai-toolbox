@@ -185,6 +185,33 @@ If your plugin does not need CSS, delete this file.
 	padding-top: 8px;
 }
 
+/* Action container styles */
+.action-container {
+	margin-left: 20px;
+	margin-bottom: 8px;
+}
+
+.action-header {
+	cursor: pointer;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	padding: 4px 8px;
+}
+
+.action-header:hover .setting-item-name {
+	color: var(--text-accent);
+}
+
+.action-content.is-collapsed {
+	display: none;
+}
+
+.action-content.is-expanded {
+	display: block;
+	padding-top: 8px;
+	padding-left: 12px;
+}
+
 .workflow-textarea {
 	width: 100%;
 	min-height: 120px;
@@ -389,35 +416,28 @@ button.mod-success:hover {
 	border-color: rgba(100, 200, 100, 0.15);
 }
 
-.available-tokens-header {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 12px;
+/* Header when used with collapsible section (Setting element) */
+.available-tokens-header.setting-item {
+	padding: 8px 12px;
+	border: none;
 	cursor: pointer;
 	user-select: none;
 	background-color: rgba(100, 200, 100, 0.05);
 }
 
-.theme-dark .available-tokens-header {
+.theme-dark .available-tokens-header.setting-item {
 	background-color: rgba(100, 200, 100, 0.03);
 }
 
-.available-tokens-header:hover {
+.available-tokens-header.setting-item:hover {
 	background-color: rgba(100, 200, 100, 0.12);
 }
 
-.theme-dark .available-tokens-header:hover {
+.theme-dark .available-tokens-header.setting-item:hover {
 	background-color: rgba(100, 200, 100, 0.08);
 }
 
-.available-tokens-arrow {
-	font-size: 11px;
-	color: var(--text-faint);
-	opacity: 0.7;
-}
-
-.available-tokens-title {
+.available-tokens-header .setting-item-name {
 	font-weight: 400;
 	font-size: 13px;
 	color: var(--text-muted);
@@ -601,32 +621,133 @@ button.mod-success:hover {
 	color: var(--text-on-accent);
 }
 
-/* Additional settings styles */
-.additional-settings-toggle {
+/* Global advanced settings toggle (above tab header) */
+.settings-advanced-toggle {
 	justify-content: flex-end;
+	margin-bottom: 8px;
+	border-bottom: none;
 }
 
-.additional-settings-toggle .setting-item-name {
+.settings-advanced-toggle .setting-item-name {
 	display: none;
 }
 
-.additional-settings-toggle-label {
+.settings-advanced-toggle-label {
 	font-size: 0.85em;
 	margin-right: 8px;
 }
 
+.settings-advanced-toggle-label-active {
+	color: var(--text-warning);
+}
+
+/* Settings hidden when advanced toggle is off */
+.settings-advanced-hidden {
+	display: none;
+}
+
+/* Advanced setting name styling when visible */
+.settings-advanced-name {
+	color: var(--text-warning);
+}
+
+/* Additional settings tab styles */
 .additional-settings-heading .setting-item-name {
 	font-size: 1.17em;
 }
 
-.additional-settings-advanced-hidden {
-	display: none;
+/* ==================== Log View Styles ==================== */
+
+.ai-toolbox-log-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
 }
 
-.additional-settings-advanced-label-active {
+.log-controls {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	flex-wrap: wrap;
+	flex-shrink: 0;
+}
+
+.log-control-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 13px;
+}
+
+.log-controls-spacer {
+	flex: 1;
+}
+
+.log-container {
+	flex: 1;
+	overflow-y: auto;
+	font-family: var(--font-monospace);
+	font-size: 12px;
+	padding: 8px 12px;
+	user-select: text;
+	-webkit-user-select: text;
+}
+
+.log-entry {
+	padding: 3px 0;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.log-entry:last-child {
+	border-bottom: none;
+}
+
+.log-time {
+	color: var(--text-muted);
+}
+
+.log-level {
+	font-weight: 600;
+}
+
+.log-category {
+	color: var(--text-accent);
+}
+
+.log-message {
+	color: var(--text-normal);
+}
+
+/* Log level specific styles */
+.log-debug {
+	opacity: 0.7;
+}
+
+.log-debug .log-level {
+	color: var(--text-muted);
+}
+
+.log-info .log-level {
+	color: var(--text-accent);
+}
+
+.log-warn {
+	background-color: rgba(255, 200, 0, 0.08);
+}
+
+.log-warn .log-level {
 	color: var(--text-warning);
 }
 
-.additional-settings-advanced-name {
-	color: var(--text-warning);
+.log-error {
+	background-color: rgba(255, 100, 100, 0.08);
+}
+
+.log-error .log-level {
+	color: var(--text-error);
 }

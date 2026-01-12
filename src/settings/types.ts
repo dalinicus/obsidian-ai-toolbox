@@ -61,16 +61,20 @@ export type WorkflowType = 'chat' | 'transcription';
 export type TranscriptionMediaType = 'video' | 'audio';
 
 /**
- * Source type for transcription input
+ * Timestamp granularity for transcription output.
+ * - 'disabled': No timestamps (uses simpler JSON format, reduces token usage)
+ * - 'segment': Timestamps at sentence/phrase level
+ * - 'word': Timestamps at individual word level
  */
-export type TranscriptionSourceType = 'select-file-from-vault' | 'url-from-clipboard' | 'url-from-selection';
+export type TimestampGranularity = 'disabled' | 'segment' | 'word';
 
 /**
  * Context configuration for transcription workflows
  */
 export interface TranscriptionContextConfig {
 	mediaType: TranscriptionMediaType;
-	sourceType: TranscriptionSourceType;
+	/** Token name to resolve for the source URL (e.g., 'workflow.clipboard', 'chat1.response') */
+	sourceUrlToken?: string;
 }
 
 /**
@@ -88,39 +92,99 @@ export interface ChatContextConfig {
 	type: ChatContextType;
 }
 
-/**
- * Configuration for a workflow used as a context source
- */
-export interface WorkflowContextConfig {
-	/** The ID of the workflow to use as context */
-	workflowId: string;
-}
-// TODO: Implement circular dependency detection to prevent workflows from referencing each other in a cycle
+
 
 /**
- * Configuration for a custom workflow
+ * Action type options - determines what kind of operation an action performs
+ */
+export type ActionType = 'chat' | 'transcription';
+
+/**
+ * Base action interface with common properties for all action types
+ */
+export interface BaseAction {
+	/** Unique identifier for this action */
+	id: string;
+	/** The type of action */
+	type: ActionType;
+	/** Display name for this action */
+	name: string;
+	/** Provider and model to use for this action */
+	provider: ProviderModelSelection | null;
+}
+
+/**
+ * Chat action configuration - sends a prompt to an AI model
+ */
+export interface ChatAction extends BaseAction {
+	type: 'chat';
+	/** The prompt text to send */
+	promptText: string;
+	/** Where the prompt comes from */
+	promptSourceType: PromptSourceType;
+	/** Path to prompt file (when promptSourceType is 'from-file') */
+	promptFilePath: string;
+	/** Context sources for this chat action */
+	contexts?: ChatContextConfig[];
+}
+
+/**
+ * Transcription action configuration - transcribes audio/video
+ */
+export interface TranscriptionAction extends BaseAction {
+	type: 'transcription';
+	/** Transcription context (media type and source) */
+	transcriptionContext?: TranscriptionContextConfig;
+	/** Language for transcription */
+	language?: string;
+	/** Timestamp granularity setting */
+	timestampGranularity?: TimestampGranularity;
+}
+
+/**
+ * Union type for all action types
+ */
+export type WorkflowAction = ChatAction | TranscriptionAction;
+
+/**
+ * Default configuration for a new chat action
+ */
+export const DEFAULT_CHAT_ACTION: Omit<ChatAction, 'id'> = {
+	type: 'chat',
+	name: 'Chat',
+	provider: null,
+	promptText: '',
+	promptSourceType: 'inline',
+	promptFilePath: '',
+	contexts: []
+};
+
+/**
+ * Default configuration for a new transcription action
+ */
+export const DEFAULT_TRANSCRIPTION_ACTION: Omit<TranscriptionAction, 'id'> = {
+	type: 'transcription',
+	name: 'Transcription',
+	provider: null,
+	transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' },
+	language: '',
+	timestampGranularity: 'disabled'
+};
+
+/**
+ * Configuration for a custom workflow - a container for sequential actions
  */
 export interface WorkflowConfig {
+	/** Unique identifier for this workflow */
 	id: string;
+	/** Display name for this workflow */
 	name: string;
-	type: WorkflowType;
-	promptText: string;
-	promptSourceType: PromptSourceType;
-	promptFolderPath: string;
-	promptFilePath: string;
-	provider: ProviderModelSelection | null;
+	/** Sequential list of actions to execute */
+	actions: WorkflowAction[];
+	/** How to display the final output */
 	outputType: WorkflowOutputType;
+	/** Folder for output (when outputType is 'new-note') */
 	outputFolder: string;
-	showInCommand: boolean;
-	availableAsInput: boolean;
-	// Chat workflow context sources (optional for backward compatibility)
-	contexts?: ChatContextConfig[];
-	// Workflow context sources - other workflows whose output can be used as input
-	workflowContexts?: WorkflowContextConfig[];
-	// Transcription-specific settings (optional for backward compatibility)
-	language?: string;
-	includeTimestamps?: boolean;
-	transcriptionContext?: TranscriptionContextConfig;
 }
 
 /**
@@ -128,24 +192,14 @@ export interface WorkflowConfig {
  */
 export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	name: 'New workflow',
-	type: 'chat',
-	promptText: '',
-	promptSourceType: 'inline',
-	promptFolderPath: '',
-	promptFilePath: '',
-	provider: null,
+	actions: [],
 	outputType: 'popup',
-	outputFolder: '',
-	showInCommand: true,
-	availableAsInput: false,
-	contexts: [],
-	workflowContexts: [],
-	language: '',
-	includeTimestamps: true
+	outputFolder: ''
 };
 
 export interface AIToolboxSettings {
 	impersonateBrowser: string;
+	cookiesFromBrowser: string;
 	ytdlpLocation: string;
 	ffmpegLocation: string;
 	outputDirectory: string;
@@ -165,6 +219,7 @@ export function generateId(): string {
 
 export const DEFAULT_SETTINGS: AIToolboxSettings = {
 	impersonateBrowser: 'chrome',
+	cookiesFromBrowser: '',
 	ytdlpLocation: '',
 	ffmpegLocation: '',
 	outputDirectory: '',
@@ -185,6 +240,7 @@ export interface ExpandOnNextRenderState {
 	providerId?: string;
 	modelId?: string;
 	workflowId?: string;
+	actionId?: string;
 	availableTokensExpanded?: boolean;
 }
 

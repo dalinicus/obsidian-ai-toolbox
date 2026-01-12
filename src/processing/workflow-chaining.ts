@@ -1,5 +1,6 @@
 import { App, MarkdownView } from 'obsidian';
-import { WorkflowConfig, AIToolboxSettings } from '../settings';
+import { WorkflowConfig, AIToolboxSettings, TimestampGranularity } from '../settings';
+import { TranscriptionResult, TranscriptionChunk } from '../providers';
 
 /**
  * Result from executing a workflow, used for chaining
@@ -23,58 +24,26 @@ export interface WorkflowExecutionResult {
 export type WorkflowResultsMap = Map<string, WorkflowExecutionResult>;
 
 /**
- * Context for tracking workflow dependency execution
- */
-export interface DependencyExecutionContext {
-    /** The Obsidian App instance */
-    app: App;
-    /** Plugin settings */
-    settings: AIToolboxSettings;
-    /** Results from executed dependencies */
-    results: WorkflowResultsMap;
-    /** Workflow IDs currently in the execution stack (for circular detection) */
-    executionStack: Set<string>;
-}
-
-/**
  * Detect circular dependencies in a workflow's dependency chain.
- * Returns an array of workflow names forming the cycle, or empty if no cycle.
+ * Currently workflows don't have cross-workflow dependencies (actions chain within a workflow).
+ * This function is kept for potential future use.
  */
 export function detectCircularDependency(
-    workflow: WorkflowConfig,
-    settings: AIToolboxSettings,
-    visited: Set<string> = new Set(),
-    path: string[] = []
+    _workflow: WorkflowConfig,
+    _settings: AIToolboxSettings,
+    _visited: Set<string> = new Set(),
+    _path: string[] = []
 ): string[] {
-    if (visited.has(workflow.id)) {
-        // Found a cycle - return the path from the first occurrence
-        const cycleStart = path.indexOf(workflow.name);
-        return [...path.slice(cycleStart), workflow.name];
-    }
-
-    visited.add(workflow.id);
-    path.push(workflow.name);
-
-    const workflowContexts = workflow.workflowContexts ?? [];
-    for (const ctx of workflowContexts) {
-        const depWorkflow = settings.workflows.find(w => w.id === ctx.workflowId);
-        if (depWorkflow) {
-            const cycle = detectCircularDependency(depWorkflow, settings, visited, path);
-            if (cycle.length > 0) {
-                return cycle;
-            }
-        }
-    }
-
-    path.pop();
+    // No cross-workflow dependencies in current design
     return [];
 }
 
 /**
- * Check if a workflow has any workflow dependencies configured
+ * Check if a workflow has any workflow dependencies configured.
+ * Currently workflows don't have cross-workflow dependencies.
  */
-export function hasWorkflowDependencies(workflow: WorkflowConfig): boolean {
-    return (workflow.workflowContexts?.length ?? 0) > 0;
+export function hasWorkflowDependencies(_workflow: WorkflowConfig): boolean {
+    return false;
 }
 
 /**
@@ -121,33 +90,72 @@ export function createChatWorkflowTokens(
 }
 
 /**
- * Create transcription workflow tokens from execution data
+ * Format a timestamp in seconds to MM:SS or HH:MM:SS format.
+ */
+export function formatTimestamp(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+
+    if (hours > 0) {
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Format transcription chunks with timestamps.
+ * Each segment is prefixed with its start time in [MM:SS] format.
+ */
+export function formatTranscriptionWithTimestamps(chunks: TranscriptionChunk[]): string {
+    if (!chunks || chunks.length === 0) {
+        return '';
+    }
+
+    return chunks
+        .map(chunk => `[${formatTimestamp(chunk.timestamp[0])}] ${chunk.text}`)
+        .join('\n');
+}
+
+/**
+ * Create transcription workflow tokens from execution data.
+ * Generates plain text transcription and optionally timestamped version.
+ * The transcriptionWithTimestamps token is only included when granularity is not 'disabled'.
  */
 export function createTranscriptionWorkflowTokens(
-    transcriptionText: string,
+    transcriptionResult: TranscriptionResult,
     metadata?: {
         title?: string;
         uploader?: string;
         sourceUrl?: string;
         description?: string;
         tags?: string[];
-    }
+    },
+    timestampGranularity?: TimestampGranularity
 ): Record<string, string> {
-    return {
-        transcription: transcriptionText,
+    const tokens: Record<string, string> = {
+        transcription: transcriptionResult.text,
         title: metadata?.title ?? '',
         author: metadata?.uploader ?? '',
         sourceUrl: metadata?.sourceUrl ?? '',
         description: metadata?.description ?? '',
         tags: metadata?.tags?.join(', ') ?? ''
     };
+
+    // Only include timestamped transcription when timestamps are enabled
+    if (timestampGranularity !== 'disabled') {
+        tokens.transcriptionWithTimestamps = formatTranscriptionWithTimestamps(transcriptionResult.chunks);
+    }
+
+    return tokens;
 }
 
 /**
- * Get ordered list of dependency workflow IDs for a workflow
+ * Get ordered list of dependency workflow IDs for a workflow.
+ * Currently workflows don't have cross-workflow dependencies.
  */
-export function getDependencyWorkflowIds(workflow: WorkflowConfig): string[] {
-    return (workflow.workflowContexts ?? []).map(ctx => ctx.workflowId);
+export function getDependencyWorkflowIds(_workflow: WorkflowConfig): string[] {
+    return [];
 }
 
 /**
@@ -157,16 +165,16 @@ export interface ContextTokenValues {
     /** The currently selected text in the editor */
     selection?: string;
     /** The full contents of the active file */
-    activeTabContent?: string;
-    /** The filename of the active file */
-    activeTabFilename?: string;
+    fileContent?: string;
+    /** The path of the active file */
+    filePath?: string;
     /** The clipboard contents */
     clipboard?: string;
 }
 
 /**
  * Gather context values from the current editor/clipboard state.
- * This retrieves selection, active tab content, filename, and clipboard for token replacement.
+ * This retrieves selection, file content, file path, and clipboard for token replacement.
  */
 export async function gatherContextValues(app: App): Promise<ContextTokenValues> {
     const values: ContextTokenValues = {};
@@ -182,9 +190,9 @@ export async function gatherContextValues(app: App): Promise<ContextTokenValues>
 
         const file = activeView.file;
         if (file) {
-            values.activeTabFilename = file.name;
+            values.filePath = file.path;
             try {
-                values.activeTabContent = await app.vault.read(file);
+                values.fileContent = await app.vault.read(file);
             } catch {
                 // Ignore read errors
             }
@@ -204,24 +212,27 @@ export async function gatherContextValues(app: App): Promise<ContextTokenValues>
 }
 
 /**
- * Replace context tokens in a prompt with actual values.
- * Handles simple tokens like {{selection}}, {{clipboard}}, {{activeTabContent}}, {{activeTabFilename}}.
+ * Replace workflow context tokens in a prompt with actual values.
+ * Handles tokens like {{workflow.selection}}, {{workflow.clipboard}},
+ * {{workflow.file.content}}, {{workflow.file.path}}.
+ *
+ * These tokens are gathered once at workflow start and shared across all actions.
  */
-export function replaceContextTokens(
+export function replaceWorkflowContextTokens(
     promptText: string,
     values: ContextTokenValues
 ): string {
-    // Match simple tokens like {{selection}} (no dot, simple alphanumeric name)
-    const tokenPattern = /\{\{([a-zA-Z]+)\}\}/g;
+    // Match workflow context tokens like {{workflow.selection}} or {{workflow.file.content}}
+    const tokenPattern = /\{\{workflow\.([a-zA-Z.]+)\}\}/g;
 
     return promptText.replace(tokenPattern, (match, tokenName: string) => {
         switch (tokenName) {
             case 'selection':
                 return values.selection ?? match;
-            case 'activeTabContent':
-                return values.activeTabContent ?? match;
-            case 'activeTabFilename':
-                return values.activeTabFilename ?? match;
+            case 'file.content':
+                return values.fileContent ?? match;
+            case 'file.path':
+                return values.filePath ?? match;
             case 'clipboard':
                 return values.clipboard ?? match;
             default:
@@ -229,13 +240,5 @@ export function replaceContextTokens(
                 return match;
         }
     });
-}
-
-/**
- * Check if a prompt contains any context tokens that need replacement.
- */
-export function hasContextTokens(promptText: string): boolean {
-    const contextTokens = ['selection', 'activeTabContent', 'activeTabFilename', 'clipboard'];
-    return contextTokens.some(token => promptText.includes(`{{${token}}}`));
 }
 

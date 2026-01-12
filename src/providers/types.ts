@@ -1,19 +1,19 @@
-import { AIProviderType } from '../settings';
-import { TestAudioData } from '../processing/audio-processor';
+import { AIProviderType, TimestampGranularity } from '../settings';
+import { TestAudioData, TranscriptionWord, TranscriptionSegment } from '../processing/audio-processor';
 
-// Re-export TestAudioData for consumers of this module
-export type { TestAudioData };
+// Re-export types for consumers of this module
+export type { TestAudioData, TranscriptionWord, TranscriptionSegment };
 
 /**
  * Options for audio transcription
  */
 export interface TranscriptionOptions {
-	includeTimestamps?: boolean;
+	timestampGranularity?: TimestampGranularity;
 	language?: string;
 }
 
 /**
- * Individual chunk with timestamps from transcription
+ * Individual chunk with timestamps from transcription (segment-level)
  */
 export interface TranscriptionChunk {
 	text: string;
@@ -21,11 +21,17 @@ export interface TranscriptionChunk {
 }
 
 /**
- * Result from audio transcription
+ * Result from audio transcription.
+ * Always includes both plain text and timestamped chunks.
  */
 export interface TranscriptionResult {
+	/** The complete transcription text */
 	text: string;
-	chunks?: TranscriptionChunk[];
+	/** Timestamped segments/chunks from the transcription */
+	chunks: TranscriptionChunk[];
+	/** Word-level timestamps (only populated when granularity is 'word') */
+	words?: TranscriptionWord[];
+	/** Path to the source audio file */
 	audioFilePath: string;
 }
 
