@@ -1,4 +1,4 @@
-import { WorkflowType, TimestampGranularity } from "../settings/types";
+import { ActionType, TimestampGranularity } from "../settings/types";
 
 /**
  * Token definition for display in the settings UI
@@ -88,21 +88,20 @@ const TOKEN_LABELS: Record<string, string> = {
  * Options for getting token definitions
  */
 export interface TokenDefinitionOptions {
-	/** For transcription workflows, the timestamp granularity setting */
+	/** For transcription actions, the timestamp granularity setting */
 	timestampGranularity?: TimestampGranularity;
 }
 
 /**
- * Get token definitions for a workflow type.
- * For transcription workflows, the transcriptionWithTimestamps token is excluded
+ * Get token definitions for an action type.
+ * For transcription actions, the transcriptionWithTimestamps token is excluded
  * when timestampGranularity is 'disabled' or undefined (default).
  */
-export function getTokenDefinitionsForType(
-	type: WorkflowType,
+export function getTokenDefinitionsForActionType(
+	type: ActionType,
 	options?: TokenDefinitionOptions
 ): TokenDefinition[] {
 	if (type === 'transcription') {
-		// Filter out transcriptionWithTimestamps when granularity is disabled or not set
 		const granularity = options?.timestampGranularity ?? 'disabled';
 		if (granularity === 'disabled') {
 			return TRANSCRIPTION_WORKFLOW_TOKENS.filter(
@@ -115,19 +114,40 @@ export function getTokenDefinitionsForType(
 }
 
 /**
+ * Get token definitions for an action, prefixed with action ID.
+ * Used to show available tokens in the settings UI.
+ *
+ * @param actionId - The ID of the action
+ * @param actionType - The type of the action (chat or transcription)
+ * @param options - Optional settings like timestampGranularity
+ */
+export function getActionTokens(
+	actionId: string,
+	actionType: ActionType,
+	options?: TokenDefinitionOptions
+): TokenDefinition[] {
+	const baseTokens = getTokenDefinitionsForActionType(actionType, options);
+
+	return baseTokens.map(token => ({
+		name: `${actionId}.${token.name}`,
+		description: token.description
+	}));
+}
+
+/**
  * Get token definitions for a workflow used as a context source.
- * Returns tokens prefixed with the workflow ID to avoid collisions.
+ * Returns tokens from the last action, prefixed with the workflow ID.
  *
  * @param workflowId - The ID of the workflow
- * @param workflowType - The type of the workflow (chat or transcription)
+ * @param lastActionType - The type of the last action in the workflow
  * @param options - Optional settings like timestampGranularity
  */
 export function getWorkflowContextTokens(
 	workflowId: string,
-	workflowType: WorkflowType,
+	lastActionType: ActionType,
 	options?: TokenDefinitionOptions
 ): TokenDefinition[] {
-	const baseTokens = getTokenDefinitionsForType(workflowType, options);
+	const baseTokens = getTokenDefinitionsForActionType(lastActionType, options);
 
 	return baseTokens.map(token => ({
 		name: `${workflowId}.${token.name}`,
@@ -140,15 +160,15 @@ export function getWorkflowContextTokens(
  * Used for copying a complete set of token references to the clipboard.
  *
  * @param workflowId - The ID of the workflow
- * @param workflowType - The type of the workflow (chat or transcription)
+ * @param lastActionType - The type of the last action in the workflow
  * @param options - Optional settings like timestampGranularity
  */
 export function generateWorkflowTokenTemplate(
 	workflowId: string,
-	workflowType: WorkflowType,
+	lastActionType: ActionType,
 	options?: TokenDefinitionOptions
 ): string {
-	const tokens = getTokenDefinitionsForType(workflowType, options);
+	const tokens = getTokenDefinitionsForActionType(lastActionType, options);
 
 	return tokens
 		.map(token => {

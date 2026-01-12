@@ -1,4 +1,4 @@
-import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, WorkflowConfig, ProviderModelSelection } from '../settings/index';
+import { AIToolboxSettings, AIProviderConfig, AIModelConfig, DEFAULT_OPENAI_ENDPOINT, WorkflowConfig, ProviderModelSelection, WorkflowAction } from '../settings/index';
 import { ModelProvider, ModelProviderConfig } from './types';
 import { AzureOpenAIModelProvider } from './azure-openai-provider';
 import { OpenAIModelProvider } from './openai-provider';
@@ -86,9 +86,26 @@ function createProviderFromSelection(settings: AIToolboxSettings, selection: Pro
  * @throws ProviderCreationError if the provider cannot be created
  */
 export function createWorkflowProvider(settings: AIToolboxSettings, workflow: WorkflowConfig): ModelProvider | null {
-	if (!workflow.provider) {
+	// For workflows with actions, get provider from the first action
+	const firstAction = workflow.actions[0];
+	if (firstAction?.provider) {
+		return createProviderFromSelection(settings, firstAction.provider);
+	}
+	return null;
+}
+
+/**
+ * Create a provider for a specific action configuration.
+ *
+ * @param settings - Plugin settings containing provider configuration
+ * @param action - The action configuration to create a provider for
+ * @returns A configured ModelProvider for the action, or null if not configured
+ * @throws ProviderCreationError if the provider cannot be created
+ */
+export function createActionProvider(settings: AIToolboxSettings, action: WorkflowAction): ModelProvider | null {
+	if (!action.provider) {
 		return null;
 	}
 
-	return createProviderFromSelection(settings, workflow.provider);
+	return createProviderFromSelection(settings, action.provider);
 }

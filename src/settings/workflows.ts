@@ -1,9 +1,12 @@
-import { Notice, setIcon, Setting } from "obsidian";
+import { Setting } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
 	WorkflowOutputType,
-	WorkflowType,
+	WorkflowAction,
+	ChatAction,
+	TranscriptionAction,
+	ActionType,
 	PromptSourceType,
 	TranscriptionMediaType,
 	TranscriptionSourceType,
@@ -11,16 +14,15 @@ import {
 	ChatContextType,
 	ExpandOnNextRenderState,
 	generateId,
-	DEFAULT_WORKFLOW_CONFIG
+	DEFAULT_WORKFLOW_CONFIG,
+	DEFAULT_CHAT_ACTION,
+	DEFAULT_TRANSCRIPTION_ACTION
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
-import { WorkflowTypeModal } from "../components/workflow-type-modal";
-import { TokenDefinition, getWorkflowContextTokens, generateWorkflowTokenTemplate } from "../tokens";
 import {
 	CHAT_CONTEXT_TYPE_LABELS,
 	CHAT_CONTEXT_TYPE_DESCRIPTIONS,
-	createContextHandler,
 	getAvailableContextTypes
 } from "../handlers";
 
@@ -62,24 +64,19 @@ export function displayWorkflowsSettings(
 	// Add workflow button
 	new Setting(containerEl)
 		.setName('Workflows')
-		.setDesc('Configure custom workflows to use with your AI providers')
+		.setDesc('Configure custom workflows with actions')
 		.addButton(button => button
 			.setButtonText('Add workflow')
 			.setCta()
-			.onClick(() => {
-				// Show modal to select workflow type
-				const modal = new WorkflowTypeModal(plugin.app, (type: WorkflowType) => {
-					const newWorkflow: WorkflowConfig = {
-						id: generateId(),
-						...DEFAULT_WORKFLOW_CONFIG,
-						type
-					};
-					plugin.settings.workflows.push(newWorkflow);
-					// Expand the newly created workflow
-					callbacks.setExpandState({ workflowId: newWorkflow.id });
-					void plugin.saveSettings().then(() => callbacks.refresh());
-				});
-				modal.open();
+			.onClick(async () => {
+				const newWorkflow: WorkflowConfig = {
+					id: generateId(),
+					...DEFAULT_WORKFLOW_CONFIG
+				};
+				plugin.settings.workflows.push(newWorkflow);
+				callbacks.setExpandState({ workflowId: newWorkflow.id });
+				await plugin.saveSettings();
+				callbacks.refresh();
 			}));
 
 	// Display each workflow
@@ -97,9 +94,14 @@ function displayWorkflowSettings(
 	const expandState = callbacks.getExpandState();
 	const shouldExpand = expandState.workflowId === workflow.id;
 
-	// Determine icon based on workflow type (default to 'chat' for backward compatibility)
-	const workflowType = workflow.type || 'chat';
-	const icon = workflowType === 'chat' ? 'message-circle' : 'audio-lines';
+	// Ensure actions array exists (for backward compatibility with old workflows)
+	if (!workflow.actions) {
+		workflow.actions = [];
+	}
+
+	// Determine icon based on first action type (or default)
+	const firstAction = workflow.actions[0];
+	const icon = firstAction?.type === 'transcription' ? 'audio-lines' : 'message-circle';
 
 	const showAdvanced = callbacks.isAdvancedVisible();
 
@@ -123,7 +125,7 @@ function displayWorkflowSettings(
 		},
 	});
 
-	// Workflow name (common to all workflow types)
+	// Workflow name
 	new Setting(contentContainer)
 		.setName('Name')
 		.setDesc('Display name for this workflow')
@@ -135,12 +137,39 @@ function displayWorkflowSettings(
 				await plugin.saveSettings();
 			}));
 
-	// Route to type-specific settings
-	if (workflowType === 'transcription') {
-		displayTranscriptionWorkflowSettings(contentContainer, plugin, workflow, callbacks, isExpanded);
-	} else {
-		// Default to chat workflow settings for backward compatibility
-		displayChatWorkflowSettings(contentContainer, plugin, workflow, callbacks, isExpanded);
+	// Actions section
+	displayActionsSection(contentContainer, plugin, workflow, callbacks, isExpanded);
+
+	// Output type
+	new Setting(contentContainer)
+		.setName('Output type')
+		.setDesc('How to display the workflow result')
+		.addDropdown(dropdown => dropdown
+			.addOptions(OUTPUT_TYPE_OPTIONS)
+			.setValue(workflow.outputType)
+			.onChange(async (value) => {
+				workflow.outputType = value as WorkflowOutputType;
+				await plugin.saveSettings();
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
+			}));
+
+	// Output folder (only for new-note output type)
+	if (workflow.outputType === 'new-note') {
+		createPathPicker({
+			containerEl: contentContainer,
+			app: plugin.app,
+			name: 'Output folder',
+			description: 'Folder where new notes will be created',
+			initialPath: workflow.outputFolder ?? '',
+			allowFiles: false,
+			onChange: async (path: string) => {
+				workflow.outputFolder = path;
+				await plugin.saveSettings();
+			}
+		});
 	}
 
 	// Clear the expand state after rendering this workflow
@@ -150,33 +179,149 @@ function displayWorkflowSettings(
 }
 
 /**
- * Display chat-specific workflow settings
+ * Action type display labels
  */
-function displayChatWorkflowSettings(
-	contentContainer: HTMLElement,
+const ACTION_TYPE_OPTIONS: Record<ActionType, string> = {
+	'chat': 'Chat',
+	'transcription': 'Transcription'
+};
+
+/**
+ * Display the actions section for a workflow
+ */
+function displayActionsSection(
+	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
 	workflow: WorkflowConfig,
 	callbacks: WorkflowSettingsCallbacks,
 	isExpanded: () => boolean
 ): void {
-	// Provider/Model selection (only models that support chat)
-	displayWorkflowProviderSelection(contentContainer, plugin, workflow);
+	const actionsContainer = containerEl.createDiv('actions-section');
+	actionsContainer.createDiv({ text: 'Actions', cls: 'actions-section-title' });
+
+	// Add action button
+	new Setting(actionsContainer)
+		.addDropdown(dropdown => dropdown
+			.addOption('', 'Add action...')
+			.addOptions(ACTION_TYPE_OPTIONS)
+			.onChange(async (value) => {
+				if (!value) return;
+
+				const actionType = value as ActionType;
+				let newAction: WorkflowAction;
+
+				if (actionType === 'chat') {
+					newAction = {
+						...DEFAULT_CHAT_ACTION,
+						id: generateId(),
+						name: `Chat ${workflow.actions.length + 1}`
+					};
+				} else {
+					newAction = {
+						...DEFAULT_TRANSCRIPTION_ACTION,
+						id: generateId(),
+						name: `Transcription ${workflow.actions.length + 1}`
+					};
+				}
+
+				workflow.actions.push(newAction);
+				await plugin.saveSettings();
+
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
+				callbacks.refresh();
+			}));
+
+	// Display each action
+	for (let i = 0; i < workflow.actions.length; i++) {
+		const action = workflow.actions[i];
+		if (!action) continue;
+		displayActionSettings(actionsContainer, plugin, workflow, action, i, callbacks, isExpanded);
+	}
+}
+
+/**
+ * Display settings for a single action
+ */
+function displayActionSettings(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	workflow: WorkflowConfig,
+	action: WorkflowAction,
+	index: number,
+	callbacks: WorkflowSettingsCallbacks,
+	isExpanded: () => boolean
+): void {
+	const actionIcon = action.type === 'transcription' ? 'audio-lines' : 'message-circle';
+
+	const { contentContainer, updateTitle } = createCollapsibleSection({
+		containerEl,
+		title: action.name || `Action ${index + 1}`,
+		containerClass: 'action-container',
+		contentClass: 'action-content',
+		headerClass: 'action-header',
+		startExpanded: false,
+		isHeading: false,
+		icon: actionIcon,
+		onDelete: async () => {
+			workflow.actions.splice(index, 1);
+			await plugin.saveSettings();
+			if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
+			}
+			callbacks.refresh();
+		},
+	});
+
+	// Action name
+	new Setting(contentContainer)
+		.setName('Name')
+		.setDesc('Display name for this action')
+		.addText(text => text
+			.setValue(action.name)
+			.onChange(async (value) => {
+				action.name = value;
+				updateTitle(value || `Action ${index + 1}`);
+				await plugin.saveSettings();
+			}));
+
+	// Route to type-specific settings
+	if (action.type === 'transcription') {
+		displayTranscriptionActionSettings(contentContainer, plugin, action as TranscriptionAction, callbacks, isExpanded, workflow);
+	} else {
+		displayChatActionSettings(contentContainer, plugin, action as ChatAction, callbacks, isExpanded, workflow);
+	}
+}
+
+/**
+ * Display chat action settings
+ */
+function displayChatActionSettings(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	action: ChatAction,
+	callbacks: WorkflowSettingsCallbacks,
+	isExpanded: () => boolean,
+	workflow: WorkflowConfig
+): void {
+	// Provider selection
+	displayActionProviderSelection(containerEl, plugin, action, 'chat');
 
 	// Context section
-	displayContextSection(contentContainer, plugin, workflow, callbacks, isExpanded);
+	displayActionContextSection(containerEl, plugin, action, callbacks, isExpanded, workflow);
 
 	// Prompt source type dropdown
-	const promptSourceType = workflow.promptSourceType ?? 'inline';
-	new Setting(contentContainer)
+	const promptSourceType = action.promptSourceType ?? 'inline';
+	new Setting(containerEl)
 		.setName('Prompt source')
 		.setDesc('Choose where the prompt text comes from')
 		.addDropdown(dropdown => dropdown
 			.addOptions(PROMPT_SOURCE_OPTIONS)
 			.setValue(promptSourceType)
 			.onChange(async (value) => {
-				workflow.promptSourceType = value as PromptSourceType;
+				action.promptSourceType = value as PromptSourceType;
 				await plugin.saveSettings();
-				// Preserve expand state when refreshing
 				if (isExpanded()) {
 					callbacks.setExpandState({ workflowId: workflow.id });
 				}
@@ -185,15 +330,15 @@ function displayChatWorkflowSettings(
 
 	// Prompt text textarea (only show when source is inline)
 	if (promptSourceType === 'inline') {
-		new Setting(contentContainer)
+		new Setting(containerEl)
 			.setName('Prompt text')
 			.setDesc('The prompt text to send to the AI model')
 			.addTextArea(textArea => {
 				textArea
 					.setPlaceholder('Enter your prompt text here...')
-					.setValue(workflow.promptText)
+					.setValue(action.promptText ?? '')
 					.onChange(async (value) => {
-						workflow.promptText = value;
+						action.promptText = value;
 						await plugin.saveSettings();
 					});
 				textArea.inputEl.rows = 6;
@@ -204,211 +349,56 @@ function displayChatWorkflowSettings(
 	// Prompt file picker (only show when source is from-file)
 	if (promptSourceType === 'from-file') {
 		createPathPicker({
-			containerEl: contentContainer,
+			containerEl,
 			app: plugin.app,
 			name: 'Prompt file',
 			description: 'Search for a file to use as the prompt template',
 			placeholder: 'Search for file...',
-			initialPath: workflow.promptFilePath ?? '',
+			initialPath: action.promptFilePath ?? '',
 			allowFiles: true,
 			onChange: async (path: string) => {
-				workflow.promptFilePath = path;
+				action.promptFilePath = path;
 				await plugin.saveSettings();
 			}
 		});
 	}
-
-	// Make available as input to other workflows toggle
-	new Setting(contentContainer)
-		.setName('Make available as input to other workflows')
-		.setDesc('Allow this workflow to be used as input context for other workflows')
-		.addToggle(toggle => toggle
-			.setValue(workflow.availableAsInput ?? false)
-			.onChange(async (value) => {
-				workflow.availableAsInput = value;
-				await plugin.saveSettings();
-				// Refresh so other workflow dropdowns update to include/exclude this workflow
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
-				callbacks.refresh();
-			}));
-
-	// List in Workflow Command toggle
-	new Setting(contentContainer)
-		.setName('List in run workflow command')
-		.setDesc('Show this workflow in the list when running the run workflow command')
-		.addToggle(toggle => toggle
-			.setValue(workflow.showInCommand ?? true)
-			.onChange(async (value) => {
-				workflow.showInCommand = value;
-				await plugin.saveSettings();
-				// Preserve expand state when refreshing
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
-				callbacks.refresh();
-			}));
-
-	// Output type selection (only show if workflow is listed in command)
-	if (workflow.showInCommand ?? true) {
-		new Setting(contentContainer)
-			.setName('Output type')
-			.setDesc('Choose how to display the AI response')
-			.addDropdown(dropdown => dropdown
-				.addOptions(OUTPUT_TYPE_OPTIONS)
-				.setValue(workflow.outputType || 'popup')
-				.onChange(async (value) => {
-					workflow.outputType = value as WorkflowOutputType;
-					await plugin.saveSettings();
-					// Preserve expand state when refreshing (output folder visibility may change)
-					if (isExpanded()) {
-						callbacks.setExpandState({ workflowId: workflow.id });
-					}
-					callbacks.refresh();
-				}));
-
-		// Output folder (only show if output type is new-note)
-		if (workflow.outputType === 'new-note') {
-			createPathPicker({
-				containerEl: contentContainer,
-				app: plugin.app,
-				name: 'Output folder',
-				description: 'Folder where notes will be created (leave empty to use default)',
-				placeholder: 'Search for folder...',
-				initialPath: workflow.outputFolder || '',
-				onChange: async (path: string) => {
-					workflow.outputFolder = path;
-					await plugin.saveSettings();
-				}
-			});
-		}
-	}
-}
-
-function displayWorkflowProviderSelection(
-	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
-	workflow: WorkflowConfig
-): void {
-	const providers = plugin.settings.providers;
-	const currentSelection = workflow.provider;
-
-	// Build options for provider/model dropdown (only models that support chat)
-	const options: Record<string, string> = { '': 'Select a provider and model' };
-	for (const provider of providers) {
-		for (const model of provider.models) {
-			if (model.supportsChat) {
-				const key = `${provider.id}:${model.id}`;
-				options[key] = `${provider.name} - ${model.name}`;
-			}
-		}
-	}
-
-	const currentValue = currentSelection
-		? `${currentSelection.providerId}:${currentSelection.modelId}`
-		: '';
-
-	new Setting(containerEl)
-		.setName('Provider')
-		.setDesc('Select the provider and model to use for this workflow')
-		.addDropdown(dropdown => dropdown
-			.addOptions(options)
-			.setValue(currentValue)
-			.onChange(async (value) => {
-				if (value === '') {
-					workflow.provider = null;
-				} else {
-					const parts = value.split(':');
-					if (parts.length === 2 && parts[0] && parts[1]) {
-						workflow.provider = {
-							providerId: parts[0],
-							modelId: parts[1]
-						};
-					}
-				}
-				await plugin.saveSettings();
-			}));
 }
 
 /**
- * Display provider selection for transcription workflows
- * Only shows models that support transcription
+ * Display transcription action settings
  */
-function displayTranscriptionProviderSelection(
+function displayTranscriptionActionSettings(
 	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
-	workflow: WorkflowConfig
-): void {
-	const providers = plugin.settings.providers;
-	const currentSelection = workflow.provider;
-
-	// Build options for provider/model dropdown (only models that support transcription)
-	const options: Record<string, string> = { '': 'Select a provider and model' };
-	for (const provider of providers) {
-		for (const model of provider.models) {
-			if (model.supportsTranscription) {
-				const key = `${provider.id}:${model.id}`;
-				options[key] = `${provider.name} - ${model.name}`;
-			}
-		}
-	}
-
-	const currentValue = currentSelection
-		? `${currentSelection.providerId}:${currentSelection.modelId}`
-		: '';
-
-	new Setting(containerEl)
-		.setName('Provider')
-		.setDesc('Select the provider and model to use for transcription')
-		.addDropdown(dropdown => dropdown
-			.addOptions(options)
-			.setValue(currentValue)
-			.onChange(async (value) => {
-				if (value === '') {
-					workflow.provider = null;
-				} else {
-					const parts = value.split(':');
-					if (parts.length === 2 && parts[0] && parts[1]) {
-						workflow.provider = {
-							providerId: parts[0],
-							modelId: parts[1]
-						};
-					}
-				}
-				await plugin.saveSettings();
-			}));
-}
-
-/**
- * Display transcription-specific workflow settings
- */
-function displayTranscriptionWorkflowSettings(
-	contentContainer: HTMLElement,
-	plugin: AIToolboxPlugin,
-	workflow: WorkflowConfig,
+	action: TranscriptionAction,
 	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean
+	isExpanded: () => boolean,
+	workflow: WorkflowConfig
 ): void {
-	// Provider selection (only models that support transcription)
-	displayTranscriptionProviderSelection(contentContainer, plugin, workflow);
+	// Provider selection
+	displayActionProviderSelection(containerEl, plugin, action, 'transcription');
+
+	// Ensure transcriptionContext exists
+	if (!action.transcriptionContext) {
+		action.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+	}
 
 	// Media type dropdown
 	const mediaTypeOptions: Record<TranscriptionMediaType, string> = {
 		'video': 'Video',
 		'audio': 'Audio'
 	};
-	new Setting(contentContainer)
+	new Setting(containerEl)
 		.setName('Media type')
 		.setDesc('The type of media to transcribe')
 		.addDropdown(dropdown => dropdown
 			.addOptions(mediaTypeOptions)
-			.setValue(workflow.transcriptionContext?.mediaType ?? 'video')
+			.setValue(action.transcriptionContext?.mediaType ?? 'video')
 			.onChange(async (value) => {
-				if (!workflow.transcriptionContext) {
-					workflow.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+				if (!action.transcriptionContext) {
+					action.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
 				}
-				workflow.transcriptionContext.mediaType = value as TranscriptionMediaType;
+				action.transcriptionContext.mediaType = value as TranscriptionMediaType;
 				await plugin.saveSettings();
 			}));
 
@@ -418,30 +408,30 @@ function displayTranscriptionWorkflowSettings(
 		'url-from-clipboard': 'URL from clipboard',
 		'url-from-selection': 'URL from selection'
 	};
-	new Setting(contentContainer)
+	new Setting(containerEl)
 		.setName('Source')
 		.setDesc('Where to get the media file from')
 		.addDropdown(dropdown => dropdown
 			.addOptions(sourceTypeOptions)
-			.setValue(workflow.transcriptionContext?.sourceType ?? 'url-from-clipboard')
+			.setValue(action.transcriptionContext?.sourceType ?? 'url-from-clipboard')
 			.onChange(async (value) => {
-				if (!workflow.transcriptionContext) {
-					workflow.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+				if (!action.transcriptionContext) {
+					action.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
 				}
-				workflow.transcriptionContext.sourceType = value as TranscriptionSourceType;
+				action.transcriptionContext.sourceType = value as TranscriptionSourceType;
 				await plugin.saveSettings();
 			}));
 
 	// Language setting (advanced)
 	const showAdvanced = callbacks.isAdvancedVisible();
-	const languageSetting = new Setting(contentContainer)
+	const languageSetting = new Setting(containerEl)
 		.setName('Language')
 		.setDesc('Optional language code for transcription (e.g., "en", "es", "fr"). Leave empty for auto-detection.')
 		.addText(text => text
 			.setPlaceholder('Auto-detect')
-			.setValue(workflow.language || '')
+			.setValue(action.language ?? '')
 			.onChange(async (value) => {
-				workflow.language = value;
+				action.language = value;
 				await plugin.saveSettings();
 			}));
 	languageSetting.settingEl.toggleClass('settings-advanced-hidden', !showAdvanced);
@@ -455,146 +445,124 @@ function displayTranscriptionWorkflowSettings(
 		'segment': 'Segment (sentence/phrase level)',
 		'word': 'Word (individual word level)'
 	};
-	const granularitySetting = new Setting(contentContainer)
+	const granularitySetting = new Setting(containerEl)
 		.setName('Timestamp granularity')
 		.setDesc('Level of detail for timestamps. Disabling reduces token usage.')
 		.addDropdown(dropdown => dropdown
 			.addOptions(granularityOptions)
-			.setValue(workflow.timestampGranularity ?? 'disabled')
+			.setValue(action.timestampGranularity ?? 'disabled')
 			.onChange(async (value) => {
-				workflow.timestampGranularity = value as TimestampGranularity;
+				action.timestampGranularity = value as TimestampGranularity;
 				await plugin.saveSettings();
-				callbacks.setExpandState({ workflowId: workflow.id });
+				if (isExpanded()) {
+					callbacks.setExpandState({ workflowId: workflow.id });
+				}
 				callbacks.refresh();
 			}));
 	granularitySetting.settingEl.toggleClass('settings-advanced-hidden', !showAdvanced);
 	if (showAdvanced) {
 		granularitySetting.nameEl.addClass('settings-advanced-name');
 	}
-
-	// Make available as input to other workflows toggle
-	new Setting(contentContainer)
-		.setName('Make available as input to other workflows')
-		.setDesc('Allow this workflow to be used as input context for other workflows')
-		.addToggle(toggle => toggle
-			.setValue(workflow.availableAsInput ?? false)
-			.onChange(async (value) => {
-				workflow.availableAsInput = value;
-				await plugin.saveSettings();
-				// Refresh so other workflow dropdowns update to include/exclude this workflow
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
-				callbacks.refresh();
-			}));
-
-	// List in Workflow Command toggle
-	new Setting(contentContainer)
-		.setName('List in run workflow command')
-		.setDesc('Show this workflow in the list when running the run workflow command')
-		.addToggle(toggle => toggle
-			.setValue(workflow.showInCommand ?? true)
-			.onChange(async (value) => {
-				workflow.showInCommand = value;
-				await plugin.saveSettings();
-				// Preserve expand state when refreshing
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
-				callbacks.refresh();
-			}));
-
-	// Output type selection (only show if workflow is listed in command)
-	if (workflow.showInCommand ?? true) {
-		new Setting(contentContainer)
-			.setName('Output type')
-			.setDesc('Choose how to display the transcription result')
-			.addDropdown(dropdown => dropdown
-				.addOptions(OUTPUT_TYPE_OPTIONS)
-				.setValue(workflow.outputType || 'new-note')
-				.onChange(async (value) => {
-					workflow.outputType = value as WorkflowOutputType;
-					await plugin.saveSettings();
-					// Preserve expand state when refreshing (output folder visibility may change)
-					if (isExpanded()) {
-						callbacks.setExpandState({ workflowId: workflow.id });
-					}
-					callbacks.refresh();
-				}));
-
-		// Output folder (only show if output type is new-note)
-		if (workflow.outputType === 'new-note') {
-			createPathPicker({
-				containerEl: contentContainer,
-				app: plugin.app,
-				name: 'Output folder',
-				description: 'Folder where transcription notes will be created (leave empty to use default)',
-				placeholder: 'Search for folder...',
-				initialPath: workflow.outputFolder || '',
-				onChange: async (path: string) => {
-					workflow.outputFolder = path;
-					await plugin.saveSettings();
-				}
-			});
-		}
-	}
 }
 
 /**
- * Display context section for chat workflows
+ * Display provider selection for an action
  */
-function displayContextSection(
-	contentContainer: HTMLElement,
+function displayActionProviderSelection(
+	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
-	workflow: WorkflowConfig,
+	action: WorkflowAction,
+	capability: 'chat' | 'transcription'
+): void {
+	const providers = plugin.settings.providers;
+	const currentSelection = action.provider;
+
+	// Build options for provider/model dropdown
+	const options: Record<string, string> = { '': 'Select a provider and model' };
+	for (const provider of providers) {
+		for (const model of provider.models) {
+			const supportsCapability = capability === 'chat' ? model.supportsChat : model.supportsTranscription;
+			if (supportsCapability) {
+				const key = `${provider.id}:${model.id}`;
+				options[key] = `${provider.name} - ${model.name}`;
+			}
+		}
+	}
+
+	const currentValue = currentSelection
+		? `${currentSelection.providerId}:${currentSelection.modelId}`
+		: '';
+
+	new Setting(containerEl)
+		.setName('Provider')
+		.setDesc(`Select the provider and model to use for ${capability}`)
+		.addDropdown(dropdown => dropdown
+			.addOptions(options)
+			.setValue(currentValue)
+			.onChange(async (value) => {
+				if (value === '') {
+					action.provider = null;
+				} else {
+					const parts = value.split(':');
+					if (parts.length === 2 && parts[0] && parts[1]) {
+						action.provider = {
+							providerId: parts[0],
+							modelId: parts[1]
+						};
+					}
+				}
+				await plugin.saveSettings();
+			}));
+}
+
+/**
+ * Display context section for chat actions
+ */
+function displayActionContextSection(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	action: ChatAction,
 	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean
+	isExpanded: () => boolean,
+	workflow: WorkflowConfig
 ): void {
 	// Ensure contexts array exists
-	if (!workflow.contexts) {
-		workflow.contexts = [];
+	if (!action.contexts) {
+		action.contexts = [];
 	}
 
 	// Helper to check if a context type is enabled
 	const isContextEnabled = (type: ChatContextType): boolean => {
-		return workflow.contexts?.some(c => c.type === type) ?? false;
+		return action.contexts?.some(c => c.type === type) ?? false;
 	};
 
 	// Helper to toggle a context type
 	const toggleContext = async (type: ChatContextType, enabled: boolean): Promise<void> => {
-		if (!workflow.contexts) {
-			workflow.contexts = [];
+		if (!action.contexts) {
+			action.contexts = [];
 		}
 
 		if (enabled) {
-			// Add context if not already present
-			if (!workflow.contexts.some(c => c.type === type)) {
-				workflow.contexts.push({
+			if (!action.contexts.some(c => c.type === type)) {
+				action.contexts.push({
 					id: generateId(),
 					type
 				});
 			}
 		} else {
-			// Remove context
-			workflow.contexts = workflow.contexts.filter(c => c.type !== type);
+			action.contexts = action.contexts.filter(c => c.type !== type);
 		}
 
 		await plugin.saveSettings();
 
-		// Refresh to update the available tokens section
 		if (isExpanded()) {
-			// Check if available tokens section is expanded before refreshing
-			const tokensContent = contentContainer.querySelector('.available-tokens-content');
-			const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
-			callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
+			callbacks.setExpandState({ workflowId: workflow.id });
 		}
 		callbacks.refresh();
 	};
 
 	// Context section container
-	const contextSection = contentContainer.createDiv('context-section');
-
-	// Section header
+	const contextSection = containerEl.createDiv('context-section');
 	contextSection.createDiv({ text: 'Context', cls: 'context-section-title' });
 
 	// Toggles row
@@ -617,273 +585,4 @@ function displayContextSection(
 					await toggleContext(contextType, value);
 				}));
 	}
-
-	// Workflow context section (select other workflows as input)
-	displayWorkflowContextSection(contextSection, plugin, workflow, callbacks, isExpanded);
-
-	// Available tokens section (inside the context section)
-	displayAvailableTokensSection(contextSection, workflow, plugin, callbacks);
-}
-
-/**
- * Display workflow context section for selecting other workflows as input
- */
-function displayWorkflowContextSection(
-	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
-	workflow: WorkflowConfig,
-	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean
-): void {
-	// Ensure workflowContexts array exists
-	if (!workflow.workflowContexts) {
-		workflow.workflowContexts = [];
-	}
-
-	// Get workflows that are available as input (excluding current workflow)
-	const availableWorkflows = plugin.settings.workflows.filter(
-		w => w.availableAsInput && w.id !== workflow.id
-	);
-
-	// Workflow context subsection
-	const workflowSection = containerEl.createDiv('workflow-context-section');
-
-	// Dropdown to select a workflow
-	const dropdownContainer = workflowSection.createDiv('workflow-context-dropdown-container');
-
-	// Build options for dropdown
-	const selectedWorkflowIds = new Set(workflow.workflowContexts?.map(wc => wc.workflowId) ?? []);
-	const unselectedWorkflows = availableWorkflows.filter(w => !selectedWorkflowIds.has(w.id));
-
-	// Determine if dropdown should be disabled
-	const isDisabled = unselectedWorkflows.length === 0;
-
-	new Setting(dropdownContainer)
-		.setName('Add workflow')
-		.setDesc('Select a workflow to use as context')
-		.addDropdown(dropdown => {
-			dropdown.addOption('', 'Select a workflow...');
-			for (const w of unselectedWorkflows) {
-				dropdown.addOption(w.id, w.name);
-			}
-			dropdown.setDisabled(isDisabled);
-			if (isDisabled) {
-				dropdown.selectEl.setAttribute('title', 'No additional valid workflows are available.');
-			}
-			dropdown.onChange(async (value) => {
-				if (!value) return;
-
-				if (!workflow.workflowContexts) {
-					workflow.workflowContexts = [];
-				}
-				workflow.workflowContexts.push({ workflowId: value });
-				await plugin.saveSettings();
-
-				if (isExpanded()) {
-					// Check if available tokens section is expanded before refreshing
-					const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
-					const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
-					callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
-				}
-				callbacks.refresh();
-			});
-		});
-
-	// Display selected workflows with delete buttons
-	const selectedWorkflowsContainer = workflowSection.createDiv('workflow-context-selected-list');
-
-	for (const workflowContext of workflow.workflowContexts ?? []) {
-		const selectedWorkflow = plugin.settings.workflows.find(w => w.id === workflowContext.workflowId);
-		if (!selectedWorkflow) continue;
-
-		const itemContainer = selectedWorkflowsContainer.createDiv('workflow-context-selected-item');
-
-		const itemLabel = itemContainer.createSpan('workflow-context-selected-label');
-		itemLabel.textContent = selectedWorkflow.name;
-
-		const deleteButton = itemContainer.createEl('button', { cls: 'workflow-context-delete-button' });
-		deleteButton.textContent = '×';
-		deleteButton.setAttribute('aria-label', `Remove ${selectedWorkflow.name}`);
-		deleteButton.addEventListener('click', () => {
-			workflow.workflowContexts = workflow.workflowContexts?.filter(
-				wc => wc.workflowId !== workflowContext.workflowId
-			);
-
-			void plugin.saveSettings().then(() => {
-				if (isExpanded()) {
-					// Check if available tokens section is expanded before refreshing
-					const tokensContent = workflowSection.parentElement?.querySelector('.available-tokens-content');
-					const tokensExpanded = tokensContent?.classList.contains('is-expanded') ?? false;
-					callbacks.setExpandState({ workflowId: workflow.id, availableTokensExpanded: tokensExpanded });
-				}
-				callbacks.refresh();
-			});
-		});
-	}
-}
-
-/**
- * Represents a group of tokens from a single source
- */
-interface TokenGroup {
-	name: string;
-	tokens: TokenDefinition[];
-	/** For workflow groups: the source workflow ID */
-	workflowId?: string;
-	/** For workflow groups: the source workflow type */
-	workflowType?: WorkflowType;
-	/** For transcription workflows: the timestamp granularity setting */
-	timestampGranularity?: TimestampGranularity;
-}
-
-/**
- * Render a clickable token reference element with copy functionality
- */
-function renderTokenReference(
-	container: HTMLElement,
-	token: TokenDefinition
-): void {
-	const listItem = container.createEl('li', { cls: 'available-tokens-item' });
-
-	const tokenText = `{{${token.name}}}`;
-	const tokenRef = listItem.createEl('code', { cls: 'available-tokens-reference' });
-	tokenRef.textContent = tokenText;
-	tokenRef.setAttribute('title', 'Click to copy');
-	tokenRef.addEventListener('click', (e) => {
-		e.stopPropagation();
-		void navigator.clipboard.writeText(tokenText).then(() => {
-			new Notice(`Copied ${tokenText}`);
-		});
-	});
-
-	const tokenDesc = listItem.createSpan('available-tokens-description');
-	tokenDesc.textContent = ` — ${token.description}`;
-}
-
-/**
- * Display the available tokens section showing tokens from all configured contexts
- */
-function displayAvailableTokensSection(
-	containerEl: HTMLElement,
-	workflow: WorkflowConfig,
-	plugin: AIToolboxPlugin,
-	callbacks: WorkflowSettingsCallbacks
-): void {
-	const contexts = workflow.contexts ?? [];
-	const workflowContexts = workflow.workflowContexts ?? [];
-
-	// Check if there's anything to display
-	const hasContexts = contexts.length > 0;
-	const hasWorkflowContexts = workflowContexts.length > 0;
-
-	if (!hasContexts && !hasWorkflowContexts) {
-		return;
-	}
-
-	// Collect token groups
-	const tokenGroups: TokenGroup[] = [];
-	let totalTokenCount = 0;
-
-	// Add context handler tokens as a single "Context" group
-	if (hasContexts) {
-		const contextTokens: TokenDefinition[] = [];
-		for (const context of contexts) {
-			const handler = createContextHandler(context.type);
-			const tokens = handler.getAvailableTokens();
-			contextTokens.push(...tokens);
-		}
-		if (contextTokens.length > 0) {
-			tokenGroups.push({ name: 'Context', tokens: contextTokens });
-			totalTokenCount += contextTokens.length;
-		}
-	}
-
-	// Add workflow context tokens grouped by source workflow
-	for (const workflowContext of workflowContexts) {
-		const sourceWorkflow = plugin.settings.workflows.find(w => w.id === workflowContext.workflowId);
-		if (!sourceWorkflow) continue;
-
-		const workflowType = sourceWorkflow.type || 'chat';
-		const timestampGranularity = sourceWorkflow.timestampGranularity;
-		const workflowTokens = getWorkflowContextTokens(
-			sourceWorkflow.id,
-			workflowType,
-			{ timestampGranularity }
-		);
-		if (workflowTokens.length > 0) {
-			tokenGroups.push({
-				name: sourceWorkflow.name || 'Unnamed workflow',
-				tokens: workflowTokens,
-				workflowId: sourceWorkflow.id,
-				workflowType: workflowType,
-				timestampGranularity: timestampGranularity
-			});
-			totalTokenCount += workflowTokens.length;
-		}
-	}
-
-	if (totalTokenCount === 0) {
-		return;
-	}
-
-	// Check if we should expand the tokens section
-	const expandState = callbacks.getExpandState();
-	const shouldExpand = expandState.availableTokensExpanded === true;
-
-	// Create collapsible available tokens section
-	const sectionContainer = containerEl.createDiv('available-tokens-section');
-
-	const header = sectionContainer.createDiv('available-tokens-header');
-	const headerArrow = header.createSpan('available-tokens-arrow');
-	headerArrow.textContent = shouldExpand ? '▾' : '▸';
-
-	const headerTitle = header.createSpan('available-tokens-title');
-	headerTitle.textContent = `Available tokens (${totalTokenCount})`;
-
-	const contentClasses = shouldExpand ? 'available-tokens-content is-expanded' : 'available-tokens-content is-collapsed';
-	const content = sectionContainer.createDiv(contentClasses);
-
-	const description = content.createDiv('available-tokens-description-text');
-	description.textContent = 'These tokens available for use in prompts and output templates downstream.';
-
-	// Render each token group
-	for (const group of tokenGroups) {
-		const groupContainer = content.createDiv('available-tokens-group');
-
-		const groupHeader = groupContainer.createDiv('available-tokens-group-header');
-
-		// Make workflow group headers clickable to copy full template
-		if (group.workflowId && group.workflowType) {
-			groupHeader.createSpan({ text: group.name });
-			const copyIcon = groupHeader.createSpan({ cls: 'available-tokens-copy-icon' });
-			setIcon(copyIcon, 'copy');
-			groupHeader.addClass('is-clickable');
-			groupHeader.setAttribute('title', 'Click to copy all tokens as template');
-			const workflowId = group.workflowId;
-			const workflowType = group.workflowType;
-			const timestampGranularity = group.timestampGranularity;
-			groupHeader.addEventListener('click', (e) => {
-				e.stopPropagation();
-				const template = generateWorkflowTokenTemplate(workflowId, workflowType, { timestampGranularity });
-				void navigator.clipboard.writeText(template).then(() => {
-					new Notice('Copied token template to clipboard');
-				});
-			});
-		} else {
-			groupHeader.textContent = group.name;
-		}
-
-		const tokenList = groupContainer.createEl('ul', { cls: 'available-tokens-list' });
-		for (const token of group.tokens) {
-			renderTokenReference(tokenList, token);
-		}
-	}
-
-	// Toggle handler
-	header.addEventListener('click', () => {
-		const isCollapsed = content.classList.contains('is-collapsed');
-		content.classList.toggle('is-collapsed', !isCollapsed);
-		content.classList.toggle('is-expanded', isCollapsed);
-		headerArrow.textContent = isCollapsed ? '▾' : '▸';
-	});
 }

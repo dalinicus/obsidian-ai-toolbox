@@ -5,8 +5,15 @@ import { displayProvidersSettings, ProviderSettingsCallbacks } from "./providers
 import { displayWorkflowsSettings, WorkflowSettingsCallbacks } from "./workflows";
 import { displayAdditionalSettings, AdditionalSettingsCallbacks } from "./additional-settings";
 
-// Re-export all types and constants from types.ts for backward compatibility
-export { DEFAULT_OPENAI_ENDPOINT, generateId, DEFAULT_SETTINGS, DEFAULT_WORKFLOW_CONFIG } from "./types";
+// Re-export all types and constants from types.ts
+export {
+	DEFAULT_OPENAI_ENDPOINT,
+	generateId,
+	DEFAULT_SETTINGS,
+	DEFAULT_WORKFLOW_CONFIG,
+	DEFAULT_CHAT_ACTION,
+	DEFAULT_TRANSCRIPTION_ACTION
+} from "./types";
 export type {
 	AIProviderType,
 	AIModelConfig,
@@ -22,6 +29,11 @@ export type {
 	TimestampGranularity,
 	ChatContextType,
 	ChatContextConfig,
+	ActionType,
+	BaseAction,
+	ChatAction,
+	TranscriptionAction,
+	WorkflowAction,
 	AIToolboxSettings,
 	SettingsTabType,
 	ExpandOnNextRenderState

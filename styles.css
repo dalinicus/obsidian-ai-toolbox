@@ -185,6 +185,33 @@ If your plugin does not need CSS, delete this file.
 	padding-top: 8px;
 }
 
+/* Action container styles */
+.action-container {
+	margin-left: 20px;
+	margin-bottom: 8px;
+}
+
+.action-header {
+	cursor: pointer;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	padding: 4px 8px;
+}
+
+.action-header:hover .setting-item-name {
+	color: var(--text-accent);
+}
+
+.action-content.is-collapsed {
+	display: none;
+}
+
+.action-content.is-expanded {
+	display: block;
+	padding-top: 8px;
+	padding-left: 12px;
+}
+
 .workflow-textarea {
 	width: 100%;
 	min-height: 120px;

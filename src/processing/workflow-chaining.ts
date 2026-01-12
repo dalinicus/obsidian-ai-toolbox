@@ -24,58 +24,26 @@ export interface WorkflowExecutionResult {
 export type WorkflowResultsMap = Map<string, WorkflowExecutionResult>;
 
 /**
- * Context for tracking workflow dependency execution
- */
-export interface DependencyExecutionContext {
-    /** The Obsidian App instance */
-    app: App;
-    /** Plugin settings */
-    settings: AIToolboxSettings;
-    /** Results from executed dependencies */
-    results: WorkflowResultsMap;
-    /** Workflow IDs currently in the execution stack (for circular detection) */
-    executionStack: Set<string>;
-}
-
-/**
  * Detect circular dependencies in a workflow's dependency chain.
- * Returns an array of workflow names forming the cycle, or empty if no cycle.
+ * Currently workflows don't have cross-workflow dependencies (actions chain within a workflow).
+ * This function is kept for potential future use.
  */
 export function detectCircularDependency(
-    workflow: WorkflowConfig,
-    settings: AIToolboxSettings,
-    visited: Set<string> = new Set(),
-    path: string[] = []
+    _workflow: WorkflowConfig,
+    _settings: AIToolboxSettings,
+    _visited: Set<string> = new Set(),
+    _path: string[] = []
 ): string[] {
-    if (visited.has(workflow.id)) {
-        // Found a cycle - return the path from the first occurrence
-        const cycleStart = path.indexOf(workflow.name);
-        return [...path.slice(cycleStart), workflow.name];
-    }
-
-    visited.add(workflow.id);
-    path.push(workflow.name);
-
-    const workflowContexts = workflow.workflowContexts ?? [];
-    for (const ctx of workflowContexts) {
-        const depWorkflow = settings.workflows.find(w => w.id === ctx.workflowId);
-        if (depWorkflow) {
-            const cycle = detectCircularDependency(depWorkflow, settings, visited, path);
-            if (cycle.length > 0) {
-                return cycle;
-            }
-        }
-    }
-
-    path.pop();
+    // No cross-workflow dependencies in current design
     return [];
 }
 
 /**
- * Check if a workflow has any workflow dependencies configured
+ * Check if a workflow has any workflow dependencies configured.
+ * Currently workflows don't have cross-workflow dependencies.
  */
-export function hasWorkflowDependencies(workflow: WorkflowConfig): boolean {
-    return (workflow.workflowContexts?.length ?? 0) > 0;
+export function hasWorkflowDependencies(_workflow: WorkflowConfig): boolean {
+    return false;
 }
 
 /**
@@ -183,10 +151,11 @@ export function createTranscriptionWorkflowTokens(
 }
 
 /**
- * Get ordered list of dependency workflow IDs for a workflow
+ * Get ordered list of dependency workflow IDs for a workflow.
+ * Currently workflows don't have cross-workflow dependencies.
  */
-export function getDependencyWorkflowIds(workflow: WorkflowConfig): string[] {
-    return (workflow.workflowContexts ?? []).map(ctx => ctx.workflowId);
+export function getDependencyWorkflowIds(_workflow: WorkflowConfig): string[] {
+    return [];
 }
 
 /**
