@@ -37,10 +37,8 @@ class LogManager {
                 console.warn(formattedMsg, details !== undefined ? details : '');
                 break;
             case LogLevel.DEBUG:
-                console.debug(formattedMsg, details !== undefined ? details : '');
-                break;
             default:
-                console.log(formattedMsg, details !== undefined ? details : '');
+                console.debug(formattedMsg, details !== undefined ? details : '');
         }
 
         this.notifyListeners();
@@ -98,26 +96,26 @@ class LogManager {
 export const logManager = new LogManager();
 
 // Convenience functions for logging at specific levels
-export function logDebug(category: LogCategoryType | string, message: string, details?: unknown): void {
+export function logDebug(category: LogCategoryType, message: string, details?: unknown): void {
     logManager.log(LogLevel.DEBUG, category, message, details);
 }
 
-export function logInfo(category: LogCategoryType | string, message: string, details?: unknown): void {
+export function logInfo(category: LogCategoryType, message: string, details?: unknown): void {
     logManager.log(LogLevel.INFO, category, message, details);
 }
 
-export function logWarn(category: LogCategoryType | string, message: string, details?: unknown): void {
+export function logWarn(category: LogCategoryType, message: string, details?: unknown): void {
     logManager.log(LogLevel.WARN, category, message, details);
 }
 
-export function logError(category: LogCategoryType | string, message: string, details?: unknown): void {
+export function logError(category: LogCategoryType, message: string, details?: unknown): void {
     logManager.log(LogLevel.ERROR, category, message, details);
 }
 
 /**
  * Log at INFO level and also display an Obsidian Notice to the user.
  */
-export function logNotice(category: LogCategoryType | string, message: string, details?: unknown): void {
+export function logNotice(category: LogCategoryType, message: string, details?: unknown): void {
     logManager.log(LogLevel.INFO, category, message, details);
     new Notice(message);
 }

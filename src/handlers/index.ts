@@ -3,7 +3,8 @@ export type { InputHandler, InputContext, InputResult } from './input';
 export {
     VaultFileInputHandler,
     ClipboardUrlInputHandler,
-    SelectionUrlInputHandler
+    SelectionUrlInputHandler,
+    TokenUrlInputHandler
 } from './input';
 
 // Output handlers

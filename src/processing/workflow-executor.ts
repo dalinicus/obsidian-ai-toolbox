@@ -7,15 +7,16 @@ import {
     OutputContext,
     NewNoteOutputHandler,
     AtCursorOutputHandler,
-    PopupOutputHandler,
-    InputResult
+    PopupOutputHandler
 } from '../handlers';
 import {
     WorkflowExecutionResult,
     WorkflowResultsMap,
     detectCircularDependency,
     hasWorkflowDependencies,
-    getDependencyWorkflowIds
+    getDependencyWorkflowIds,
+    gatherContextValues,
+    ContextTokenValues
 } from './workflow-chaining';
 import {
     ActionExecutionResult,
@@ -195,6 +196,9 @@ export async function executeWorkflow(
         });
     }
 
+    // Gather workflow context values once at the start (clipboard, selection, etc.)
+    const workflowContext: ContextTokenValues = await gatherContextValues(app);
+
     // Execute actions sequentially
     const actionResults: ActionResultsMap = new Map();
     let lastResult: ActionExecutionResult | null = null;
@@ -207,7 +211,8 @@ export async function executeWorkflow(
             settings,
             previousResults: actionResults,
             dependencyResults: dependencyActionResults,
-            workflowName: workflow.name
+            workflowName: workflow.name,
+            workflowContext
         };
 
         const result = await executeAction(action, context);
@@ -263,6 +268,9 @@ async function executeWorkflowInternal(
         return { ...baseResult, error: 'No actions configured' };
     }
 
+    // Gather workflow context values once at the start
+    const workflowContext: ContextTokenValues = await gatherContextValues(app);
+
     // Execute actions sequentially
     const actionResults: ActionResultsMap = new Map();
 
@@ -272,7 +280,8 @@ async function executeWorkflowInternal(
             settings,
             previousResults: actionResults,
             dependencyResults: new Map(),
-            workflowName: workflow.name
+            workflowName: workflow.name,
+            workflowContext
         };
 
         const result = await executeAction(action, context);

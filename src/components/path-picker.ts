@@ -1,4 +1,4 @@
-import { App, Setting, AbstractInputSuggest, TFolder, TFile, TAbstractFile } from "obsidian";
+import { App, Setting, AbstractInputSuggest, TAbstractFile } from "obsidian";
 
 /**
  * Type of path selection.

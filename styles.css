@@ -416,35 +416,28 @@ button.mod-success:hover {
 	border-color: rgba(100, 200, 100, 0.15);
 }
 
-.available-tokens-header {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 10px 12px;
+/* Header when used with collapsible section (Setting element) */
+.available-tokens-header.setting-item {
+	padding: 8px 12px;
+	border: none;
 	cursor: pointer;
 	user-select: none;
 	background-color: rgba(100, 200, 100, 0.05);
 }
 
-.theme-dark .available-tokens-header {
+.theme-dark .available-tokens-header.setting-item {
 	background-color: rgba(100, 200, 100, 0.03);
 }
 
-.available-tokens-header:hover {
+.available-tokens-header.setting-item:hover {
 	background-color: rgba(100, 200, 100, 0.12);
 }
 
-.theme-dark .available-tokens-header:hover {
+.theme-dark .available-tokens-header.setting-item:hover {
 	background-color: rgba(100, 200, 100, 0.08);
 }
 
-.available-tokens-arrow {
-	font-size: 11px;
-	color: var(--text-faint);
-	opacity: 0.7;
-}
-
-.available-tokens-title {
+.available-tokens-header .setting-item-name {
 	font-weight: 400;
 	font-size: 13px;
 	color: var(--text-muted);

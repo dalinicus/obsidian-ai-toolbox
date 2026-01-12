@@ -165,16 +165,16 @@ export interface ContextTokenValues {
     /** The currently selected text in the editor */
     selection?: string;
     /** The full contents of the active file */
-    activeTabContent?: string;
-    /** The filename of the active file */
-    activeTabFilename?: string;
+    fileContent?: string;
+    /** The path of the active file */
+    filePath?: string;
     /** The clipboard contents */
     clipboard?: string;
 }
 
 /**
  * Gather context values from the current editor/clipboard state.
- * This retrieves selection, active tab content, filename, and clipboard for token replacement.
+ * This retrieves selection, file content, file path, and clipboard for token replacement.
  */
 export async function gatherContextValues(app: App): Promise<ContextTokenValues> {
     const values: ContextTokenValues = {};
@@ -190,9 +190,9 @@ export async function gatherContextValues(app: App): Promise<ContextTokenValues>
 
         const file = activeView.file;
         if (file) {
-            values.activeTabFilename = file.name;
+            values.filePath = file.path;
             try {
-                values.activeTabContent = await app.vault.read(file);
+                values.fileContent = await app.vault.read(file);
             } catch {
                 // Ignore read errors
             }
@@ -212,24 +212,27 @@ export async function gatherContextValues(app: App): Promise<ContextTokenValues>
 }
 
 /**
- * Replace context tokens in a prompt with actual values.
- * Handles simple tokens like {{selection}}, {{clipboard}}, {{activeTabContent}}, {{activeTabFilename}}.
+ * Replace workflow context tokens in a prompt with actual values.
+ * Handles tokens like {{workflow.selection}}, {{workflow.clipboard}},
+ * {{workflow.file.content}}, {{workflow.file.path}}.
+ *
+ * These tokens are gathered once at workflow start and shared across all actions.
  */
-export function replaceContextTokens(
+export function replaceWorkflowContextTokens(
     promptText: string,
     values: ContextTokenValues
 ): string {
-    // Match simple tokens like {{selection}} (no dot, simple alphanumeric name)
-    const tokenPattern = /\{\{([a-zA-Z]+)\}\}/g;
+    // Match workflow context tokens like {{workflow.selection}} or {{workflow.file.content}}
+    const tokenPattern = /\{\{workflow\.([a-zA-Z.]+)\}\}/g;
 
     return promptText.replace(tokenPattern, (match, tokenName: string) => {
         switch (tokenName) {
             case 'selection':
                 return values.selection ?? match;
-            case 'activeTabContent':
-                return values.activeTabContent ?? match;
-            case 'activeTabFilename':
-                return values.activeTabFilename ?? match;
+            case 'file.content':
+                return values.fileContent ?? match;
+            case 'file.path':
+                return values.filePath ?? match;
             case 'clipboard':
                 return values.clipboard ?? match;
             default:
@@ -237,13 +240,5 @@ export function replaceContextTokens(
                 return match;
         }
     });
-}
-
-/**
- * Check if a prompt contains any context tokens that need replacement.
- */
-export function hasContextTokens(promptText: string): boolean {
-    const contextTokens = ['selection', 'activeTabContent', 'activeTabFilename', 'clipboard'];
-    return contextTokens.some(token => promptText.includes(`{{${token}}}`));
 }
 

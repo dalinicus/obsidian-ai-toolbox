@@ -41,6 +41,25 @@ export function displayAdditionalSettings(
 				await plugin.saveSettings();
 			}));
 
+	new Setting(containerEl)
+		.setName('Use cookies from browser')
+		.setDesc('Extract cookies from a browser for authentication (required for some age-restricted or private content)')
+		.addDropdown(dropdown => dropdown
+			.addOption('', 'None')
+			.addOption('chrome', 'Chrome')
+			.addOption('edge', 'Edge')
+			.addOption('safari', 'Safari')
+			.addOption('firefox', 'Firefox')
+			.addOption('brave', 'Brave')
+			.addOption('chromium', 'Chromium')
+			.addOption('opera', 'Opera')
+			.addOption('vivaldi', 'Vivaldi')
+			.setValue(plugin.settings.cookiesFromBrowser)
+			.onChange(async (value) => {
+				plugin.settings.cookiesFromBrowser = value;
+				await plugin.saveSettings();
+			}));
+
 	const ytdlpPathSetting = new Setting(containerEl)
 		.setName('yt-dlp path') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun
 		.setDesc('Path to yt-dlp binary directory (leave empty to use system PATH)') // eslint-disable-line obsidianmd/ui/sentence-case -- proper noun

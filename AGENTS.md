@@ -150,9 +150,16 @@ The `versions.json` file maps plugin versions to minimum Obsidian app versions. 
 - Remove all other minor and patch versions for that major version
 - Example: If releasing 2.0.0, keep only 1.2.3 and 1.3.2 (remove 1.0.0, 1.1.0, 1.2.1, 1.2.2, 1.3.0, 1.3.1, etc.)
 
-#### 3. Run linting
-- Run `eslint ./src/` to check for code quality issues
-- Fix any errors or warnings before creating the release
+#### 3. Run linting and fix issues
+- Run `npx eslint ./src/` to check for code quality issues
+- **Fix all errors and warnings** before creating the release
+- Common issues to watch for:
+  - Unused imports (remove them)
+  - Floating promises (add `await` or `void` operator)
+  - Sentence case violations in UI text (use lowercase after first word)
+  - Unnecessary type assertions (remove redundant `as` casts)
+  - Misused promises in callbacks (use `void` for fire-and-forget async calls)
+  - Console statements (only `console.warn`, `console.error`, and `console.debug` are allowed)
 
 ## Security, privacy, and compliance
 
@@ -206,6 +213,7 @@ Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particula
 - Write idempotent code paths so reload/unload doesn't leak listeners or intervals.
 - Use `this.register*` helpers for everything that needs cleanup.
 - When refreshing collapsible settings sections, preserve the expand state by setting `callbacks.setExpandState({ workflowId: workflow.id })` before calling `callbacks.refresh()` if the section is currently expanded.
+- When editing action settings that trigger a UI refresh, use `preserveActionExpandState()` callback to maintain expanded state.
 
 **Don't**
 - Introduce network calls without an obvious user-facing reason and documentation.
@@ -289,13 +297,185 @@ this.registerDomEvent(window, "resize", () => { /* ... */ });
 this.registerInterval(window.setInterval(() => { /* ... */ }, 1000));
 ```
 
+## Action-based workflow system
+
+Workflows are containers for sequential actions. Each workflow can contain multiple actions that execute in order, with later actions able to reference outputs from earlier actions using tokens.
+
+### Workflow structure
+
+```ts
+interface WorkflowConfig {
+  id: string;                    // Unique identifier
+  name: string;                  // Display name
+  actions: WorkflowAction[];     // Sequential list of actions
+  outputType: WorkflowOutputType; // 'popup' | 'new-note' | 'at-cursor'
+  outputFolder: string;          // Folder for new-note output
+}
+```
+
+### Action types
+
+There are two action types: **chat** and **transcription**.
+
+#### Chat action
+
+Sends a prompt to an AI model and receives a response.
+
+```ts
+interface ChatAction extends BaseAction {
+  type: 'chat';
+  promptText: string;           // The prompt text (when inline)
+  promptSourceType: PromptSourceType; // 'inline' | 'from-file'
+  promptFilePath: string;       // Path to prompt file (when from-file)
+  contexts?: ChatContextConfig[]; // Context sources (selection, clipboard, etc.)
+}
+```
+
+**Configuration options:**
+- **Provider**: Select which AI provider and model to use
+- **Prompt source**: Inline text or load from a file in the vault
+- **Prompt text**: The prompt template with token placeholders
+
+#### Transcription action
+
+Transcribes audio/video content using a speech-to-text model.
+
+```ts
+interface TranscriptionAction extends BaseAction {
+  type: 'transcription';
+  transcriptionContext?: {
+    mediaType: 'video' | 'audio';
+    sourceUrlToken?: string;    // Token containing the URL (e.g., 'workflow.clipboard')
+  };
+  language?: string;            // ISO language code (e.g., 'en', 'es')
+  timestampGranularity?: 'disabled' | 'segment' | 'word';
+}
+```
+
+**Configuration options:**
+- **Provider**: Select which AI provider and model to use (must support transcription)
+- **Media type**: Video or audio
+- **Source URL**: Token containing the media URL (default: `workflow.clipboard`)
+- **Language**: Optional language hint for better accuracy
+- **Timestamp granularity**: Disabled (default), segment-level, or word-level
+
+### Token system
+
+Actions can reference values from workflow context and previous action outputs using `{{tokenName}}` syntax.
+
+#### Workflow context tokens (always available)
+
+| Token | Description |
+|-------|-------------|
+| `{{workflow.selection}}` | Currently selected text in the editor |
+| `{{workflow.clipboard}}` | Contents of the system clipboard |
+| `{{workflow.file.content}}` | Full contents of the active file |
+| `{{workflow.file.path}}` | Path of the active file |
+
+#### Chat action output tokens
+
+| Token | Description |
+|-------|-------------|
+| `{{actionId.prompt}}` | The original prompt text |
+| `{{actionId.response}}` | The AI response text |
+
+#### Transcription action output tokens
+
+| Token | Description |
+|-------|-------------|
+| `{{actionId.title}}` | Video title |
+| `{{actionId.author}}` | Video uploader/author |
+| `{{actionId.sourceUrl}}` | Original video URL |
+| `{{actionId.description}}` | Video description |
+| `{{actionId.tags}}` | Video tags (comma-separated) |
+| `{{actionId.transcription}}` | Plain transcription text |
+| `{{actionId.transcriptionWithTimestamps}}` | Transcription with `[MM:SS]` prefixes (only when timestamps enabled) |
+
+### Token replacement example
+
+A workflow with two actions:
+1. **Transcription action** (id: `abc123`) - transcribes a video from clipboard URL
+2. **Chat action** - summarizes the transcription
+
+The chat action's prompt can reference the transcription output:
+
+```
+Summarize the following video transcript:
+
+Title: {{abc123.title}}
+Author: {{abc123.author}}
+
+Transcript:
+{{abc123.transcription}}
+```
+
+### Workflow execution flow
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐     ┌────────────────┐
+│ Gather workflow │ ──▶ │ Execute Action 1│ ──▶ │ Execute Action 2│ ──▶ │ Output Handler │
+│ context         │     │ (store tokens)  │     │ (use prev tokens)│     │ (final result) │
+└─────────────────┘     └─────────────────┘     └─────────────────┘     └────────────────┘
+```
+
+### Settings UI expand state preservation
+
+When editing action settings that trigger a UI refresh (e.g., changing prompt source type), preserve the action's expanded state:
+
+```ts
+// In action-specific settings functions, use preserveActionExpandState callback
+.onChange(async (value) => {
+  action.someProperty = value;
+  await plugin.saveSettings();
+  preserveActionExpandState();  // Sets both workflowId and actionId
+  callbacks.refresh();
+});
+```
+
+The `ExpandOnNextRenderState` interface tracks which items should be expanded:
+
+```ts
+interface ExpandOnNextRenderState {
+  providerId?: string;
+  modelId?: string;
+  workflowId?: string;
+  actionId?: string;  // Added for action expand state
+  availableTokensExpanded?: boolean;
+}
+```
+
+### Creating new actions (avoiding shared references)
+
+When creating new actions, always create fresh instances of nested objects and arrays:
+
+```ts
+// Correct: Create new array/object instances
+const newWorkflow: WorkflowConfig = {
+  id: generateId(),
+  ...DEFAULT_WORKFLOW_CONFIG,
+  actions: []  // New array, not shared reference
+};
+
+const newChatAction = {
+  ...DEFAULT_CHAT_ACTION,
+  id: generateId(),
+  contexts: []  // New array
+};
+
+const newTranscriptionAction = {
+  ...DEFAULT_TRANSCRIPTION_ACTION,
+  id: generateId(),
+  transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' }  // New object
+};
+```
+
 ## Handler architecture
 
 The plugin uses a handler-based architecture to separate concerns for workflow execution:
 
 ### Input handlers (`src/handlers/input/`)
 
-Input handlers acquire media for transcription workflows. Each handler implements the `InputHandler` interface:
+Input handlers acquire media for transcription actions. Each handler implements the `InputHandler` interface:
 
 ```ts
 interface InputHandler {
@@ -307,6 +487,7 @@ interface InputHandler {
 - `VaultFileInputHandler` - Prompts user to select an audio file from the vault
 - `ClipboardUrlInputHandler` - Extracts audio from a video URL in the clipboard (uses yt-dlp)
 - `SelectionUrlInputHandler` - Extracts audio from a video URL in the current text selection
+- `TokenUrlInputHandler` - Extracts audio from a URL resolved from a token value
 
 **InputResult structure:**
 ```ts
@@ -343,25 +524,14 @@ interface OutputHandler {
 **To add a new input handler:**
 1. Create a new file in `src/handlers/input/` (e.g., `my-custom-input-handler.ts`)
 2. Implement the `InputHandler` interface
-3. Export from `src/handlers/input/index.ts`
-4. Add the new source type to `TranscriptionSourceType` in `src/settings/types.ts`
-5. Update `createInputHandler()` in `src/processing/workflow-executor.ts`
+3. Export from `src/handlers/input/index.ts` and `src/handlers/index.ts`
 
 **To add a new output handler:**
 1. Create a new file in `src/handlers/output/` (e.g., `my-custom-output-handler.ts`)
 2. Implement the `OutputHandler` interface
-3. Export from `src/handlers/output/index.ts`
+3. Export from `src/handlers/output/index.ts` and `src/handlers/index.ts`
 4. Add the new output type to `WorkflowOutputType` in `src/settings/types.ts`
 5. Update `createOutputHandler()` in `src/processing/workflow-executor.ts`
-
-### Workflow execution flow
-
-```
-┌─────────────────┐     ┌───────────────┐     ┌────────────────┐     ┌────────────────┐
-│ User triggers   │ ──▶ │ Input Handler │ ──▶ │ AI Provider    │ ──▶ │ Output Handler │
-│ workflow        │     │ (get media)   │     │ (transcribe)   │     │ (show result)  │
-└─────────────────┘     └───────────────┘     └────────────────┘     └────────────────┘
-```
 
 ## Troubleshooting
 

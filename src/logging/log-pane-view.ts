@@ -25,7 +25,7 @@ export class LogPaneView extends ItemView {
     }
 
     getDisplayText(): string {
-        return 'AI Toolbox Log';
+        return 'AI toolbox log';
     }
 
     getIcon(): string {
@@ -53,7 +53,7 @@ export class LogPaneView extends ItemView {
         const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
         levels.forEach((level, i) => {
             const option = select.createEl('option', { value: String(i), text: level });
-            if (i === this.filterLevel) option.selected = true;
+            if (i === (this.filterLevel as number)) option.selected = true;
         });
         select.addEventListener('change', () => {
             this.filterLevel = parseInt(select.value);
@@ -77,7 +77,7 @@ export class LogPaneView extends ItemView {
         clearBtn.addEventListener('click', () => logManager.clear());
 
         // Copy button
-        const copyBtn = controls.createEl('button', { text: 'Copy All' });
+        const copyBtn = controls.createEl('button', { text: 'Copy all' });
         copyBtn.addEventListener('click', () => this.copyLogs());
     }
 
@@ -105,7 +105,7 @@ export class LogPaneView extends ItemView {
         const text = logManager.getLogs()
             .map(e => `[${e.timestamp.toISOString()}] [${LogLevel[e.level]}] [${e.category}] ${e.message}`)
             .join('\n');
-        navigator.clipboard.writeText(text);
+        void navigator.clipboard.writeText(text);
     }
 
     async onClose(): Promise<void> {

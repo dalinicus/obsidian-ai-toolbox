@@ -9,9 +9,7 @@ import {
 	ActionType,
 	PromptSourceType,
 	TranscriptionMediaType,
-	TranscriptionSourceType,
 	TimestampGranularity,
-	ChatContextType,
 	ExpandOnNextRenderState,
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG,
@@ -21,10 +19,12 @@ import {
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
 import {
-	CHAT_CONTEXT_TYPE_LABELS,
-	CHAT_CONTEXT_TYPE_DESCRIPTIONS,
-	getAvailableContextTypes
-} from "../handlers";
+	getAvailableTokensForAction,
+	TokenGroup,
+	TokenDefinition,
+	generateGroupTemplate
+} from "../tokens";
+import { setIcon, Notice } from "obsidian";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -71,7 +71,8 @@ export function displayWorkflowsSettings(
 			.onClick(async () => {
 				const newWorkflow: WorkflowConfig = {
 					id: generateId(),
-					...DEFAULT_WORKFLOW_CONFIG
+					...DEFAULT_WORKFLOW_CONFIG,
+					actions: []  // Create new array to avoid shared reference
 				};
 				plugin.settings.workflows.push(newWorkflow);
 				callbacks.setExpandState({ workflowId: newWorkflow.id });
@@ -165,9 +166,9 @@ function displayWorkflowSettings(
 			description: 'Folder where new notes will be created',
 			initialPath: workflow.outputFolder ?? '',
 			allowFiles: false,
-			onChange: async (path: string) => {
+			onChange: (path: string) => {
 				workflow.outputFolder = path;
-				await plugin.saveSettings();
+				void plugin.saveSettings();
 			}
 		});
 	}
@@ -214,13 +215,16 @@ function displayActionsSection(
 					newAction = {
 						...DEFAULT_CHAT_ACTION,
 						id: generateId(),
-						name: `Chat ${workflow.actions.length + 1}`
+						name: `Chat ${workflow.actions.length + 1}`,
+						contexts: []  // Create new array to avoid shared reference
 					};
 				} else {
 					newAction = {
 						...DEFAULT_TRANSCRIPTION_ACTION,
 						id: generateId(),
-						name: `Transcription ${workflow.actions.length + 1}`
+						name: `Transcription ${workflow.actions.length + 1}`,
+						// Create new object to avoid shared reference
+						transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' }
 					};
 				}
 
@@ -254,14 +258,16 @@ function displayActionSettings(
 	isExpanded: () => boolean
 ): void {
 	const actionIcon = action.type === 'transcription' ? 'audio-lines' : 'message-circle';
+	const expandState = callbacks.getExpandState();
+	const shouldExpandAction = expandState.workflowId === workflow.id && expandState.actionId === action.id;
 
-	const { contentContainer, updateTitle } = createCollapsibleSection({
+	const { contentContainer, updateTitle, isExpanded: isActionExpanded } = createCollapsibleSection({
 		containerEl,
 		title: action.name || `Action ${index + 1}`,
 		containerClass: 'action-container',
 		contentClass: 'action-content',
 		headerClass: 'action-header',
-		startExpanded: false,
+		startExpanded: shouldExpandAction,
 		isHeading: false,
 		icon: actionIcon,
 		onDelete: async () => {
@@ -273,6 +279,20 @@ function displayActionSettings(
 			callbacks.refresh();
 		},
 	});
+
+	// Helper to preserve action expand state on refresh
+	const preserveActionExpandState = () => {
+		if (isExpanded() && isActionExpanded()) {
+			callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
+		} else if (isExpanded()) {
+			callbacks.setExpandState({ workflowId: workflow.id });
+		}
+	};
+
+	// Clear the action expand state after applying it
+	if (shouldExpandAction) {
+		callbacks.setExpandState({ workflowId: workflow.id });
+	}
 
 	// Action name
 	new Setting(contentContainer)
@@ -286,11 +306,102 @@ function displayActionSettings(
 				await plugin.saveSettings();
 			}));
 
+	// Available tokens section (for chat actions only, since they use prompts)
+	if (action.type === 'chat') {
+		displayAvailableTokensSection(contentContainer, workflow, index, plugin);
+	}
+
 	// Route to type-specific settings
 	if (action.type === 'transcription') {
-		displayTranscriptionActionSettings(contentContainer, plugin, action as TranscriptionAction, callbacks, isExpanded, workflow);
+		displayTranscriptionActionSettings(contentContainer, plugin, action, callbacks, workflow, preserveActionExpandState);
 	} else {
-		displayChatActionSettings(contentContainer, plugin, action as ChatAction, callbacks, isExpanded, workflow);
+		displayChatActionSettings(contentContainer, plugin, action, callbacks, preserveActionExpandState);
+	}
+}
+
+/**
+ * Display the available tokens section for an action
+ */
+function displayAvailableTokensSection(
+	containerEl: HTMLElement,
+	workflow: WorkflowConfig,
+	actionIndex: number,
+	_plugin: AIToolboxPlugin
+): void {
+	const tokenGroups = getAvailableTokensForAction(workflow, actionIndex);
+
+	// Create collapsible section
+	const { contentContainer } = createCollapsibleSection({
+		containerEl,
+		title: 'Available Tokens',
+		containerClass: 'available-tokens-section',
+		contentClass: 'available-tokens-content',
+		headerClass: 'available-tokens-header',
+		startExpanded: false,
+		isHeading: false
+	});
+
+	// Display each token group
+	for (const group of tokenGroups) {
+		displayTokenGroup(contentContainer, group);
+	}
+}
+
+/**
+ * Copy text to clipboard and show a notification
+ */
+async function copyToClipboard(text: string, description: string): Promise<void> {
+	try {
+		await navigator.clipboard.writeText(text);
+		new Notice(`Copied ${description} to clipboard`);
+	} catch {
+		new Notice('Failed to copy to clipboard');
+	}
+}
+
+/**
+ * Display a group of tokens
+ */
+function displayTokenGroup(containerEl: HTMLElement, group: TokenGroup): void {
+	const groupEl = containerEl.createDiv('available-tokens-group');
+
+	// Group header with copy functionality
+	const headerEl = groupEl.createDiv({ cls: 'available-tokens-group-header is-clickable' });
+	headerEl.createSpan({ text: group.name });
+
+	const copyIconEl = headerEl.createSpan({ cls: 'available-tokens-copy-icon' });
+	setIcon(copyIconEl, 'copy');
+
+	headerEl.addEventListener('click', () => {
+		const template = generateGroupTemplate(group);
+		void copyToClipboard(template, group.name);
+	});
+	headerEl.setAttribute('aria-label', `Copy all ${group.name} tokens`);
+
+	displayTokenList(groupEl, group.tokens);
+}
+
+/**
+ * Display a list of tokens with click-to-copy functionality
+ */
+function displayTokenList(containerEl: HTMLElement, tokens: TokenDefinition[]): void {
+	const tokenListEl = containerEl.createEl('ul', { cls: 'available-tokens-list' });
+
+	for (const token of tokens) {
+		const tokenEl = tokenListEl.createEl('li', { cls: 'available-tokens-item' });
+
+		const tokenNameEl = tokenEl.createSpan({ cls: 'available-tokens-reference' });
+		tokenNameEl.textContent = `{{${token.name}}}`;
+		tokenNameEl.setAttribute('aria-label', 'Click to copy');
+		tokenNameEl.addEventListener('click', (e) => {
+			e.stopPropagation();
+			void copyToClipboard(`{{${token.name}}}`, 'token');
+		});
+
+		tokenEl.appendText(' ');
+
+		const tokenDescEl = tokenEl.createSpan({ cls: 'available-tokens-description' });
+		tokenDescEl.textContent = `— ${token.description}`;
 	}
 }
 
@@ -302,14 +413,10 @@ function displayChatActionSettings(
 	plugin: AIToolboxPlugin,
 	action: ChatAction,
 	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean,
-	workflow: WorkflowConfig
+	preserveActionExpandState: () => void
 ): void {
 	// Provider selection
 	displayActionProviderSelection(containerEl, plugin, action, 'chat');
-
-	// Context section
-	displayActionContextSection(containerEl, plugin, action, callbacks, isExpanded, workflow);
 
 	// Prompt source type dropdown
 	const promptSourceType = action.promptSourceType ?? 'inline';
@@ -322,9 +429,7 @@ function displayChatActionSettings(
 			.onChange(async (value) => {
 				action.promptSourceType = value as PromptSourceType;
 				await plugin.saveSettings();
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
+				preserveActionExpandState();
 				callbacks.refresh();
 			}));
 
@@ -356,9 +461,9 @@ function displayChatActionSettings(
 			placeholder: 'Search for file...',
 			initialPath: action.promptFilePath ?? '',
 			allowFiles: true,
-			onChange: async (path: string) => {
+			onChange: (path: string) => {
 				action.promptFilePath = path;
-				await plugin.saveSettings();
+				void plugin.saveSettings();
 			}
 		});
 	}
@@ -372,15 +477,15 @@ function displayTranscriptionActionSettings(
 	plugin: AIToolboxPlugin,
 	action: TranscriptionAction,
 	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean,
-	workflow: WorkflowConfig
+	workflow: WorkflowConfig,
+	preserveActionExpandState: () => void
 ): void {
 	// Provider selection
 	displayActionProviderSelection(containerEl, plugin, action, 'transcription');
 
 	// Ensure transcriptionContext exists
 	if (!action.transcriptionContext) {
-		action.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+		action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
 	}
 
 	// Media type dropdown
@@ -396,29 +501,35 @@ function displayTranscriptionActionSettings(
 			.setValue(action.transcriptionContext?.mediaType ?? 'video')
 			.onChange(async (value) => {
 				if (!action.transcriptionContext) {
-					action.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+					action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
 				}
 				action.transcriptionContext.mediaType = value as TranscriptionMediaType;
 				await plugin.saveSettings();
 			}));
 
-	// Source type dropdown
-	const sourceTypeOptions: Record<TranscriptionSourceType, string> = {
-		'select-file-from-vault': 'Select file from vault',
-		'url-from-clipboard': 'URL from clipboard',
-		'url-from-selection': 'URL from selection'
-	};
+	// Source URL token picker
+	const actionIndex = workflow.actions.findIndex(a => a.id === action.id);
+	const tokenGroups = getAvailableTokensForAction(workflow, actionIndex);
+
+	// Build dropdown options from available tokens
+	const tokenOptions: Record<string, string> = {};
+	for (const group of tokenGroups) {
+		for (const token of group.tokens) {
+			tokenOptions[token.name] = token.name;
+		}
+	}
+
 	new Setting(containerEl)
-		.setName('Source')
-		.setDesc('Where to get the media file from')
+		.setName('Source URL')
+		.setDesc('Select a token containing the video/audio URL')
 		.addDropdown(dropdown => dropdown
-			.addOptions(sourceTypeOptions)
-			.setValue(action.transcriptionContext?.sourceType ?? 'url-from-clipboard')
+			.addOptions(tokenOptions)
+			.setValue(action.transcriptionContext?.sourceUrlToken ?? 'workflow.clipboard')
 			.onChange(async (value) => {
 				if (!action.transcriptionContext) {
-					action.transcriptionContext = { mediaType: 'video', sourceType: 'url-from-clipboard' };
+					action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
 				}
-				action.transcriptionContext.sourceType = value as TranscriptionSourceType;
+				action.transcriptionContext.sourceUrlToken = value;
 				await plugin.saveSettings();
 			}));
 
@@ -454,9 +565,7 @@ function displayTranscriptionActionSettings(
 			.onChange(async (value) => {
 				action.timestampGranularity = value as TimestampGranularity;
 				await plugin.saveSettings();
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
+				preserveActionExpandState();
 				callbacks.refresh();
 			}));
 	granularitySetting.settingEl.toggleClass('settings-advanced-hidden', !showAdvanced);
@@ -513,76 +622,4 @@ function displayActionProviderSelection(
 				}
 				await plugin.saveSettings();
 			}));
-}
-
-/**
- * Display context section for chat actions
- */
-function displayActionContextSection(
-	containerEl: HTMLElement,
-	plugin: AIToolboxPlugin,
-	action: ChatAction,
-	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean,
-	workflow: WorkflowConfig
-): void {
-	// Ensure contexts array exists
-	if (!action.contexts) {
-		action.contexts = [];
-	}
-
-	// Helper to check if a context type is enabled
-	const isContextEnabled = (type: ChatContextType): boolean => {
-		return action.contexts?.some(c => c.type === type) ?? false;
-	};
-
-	// Helper to toggle a context type
-	const toggleContext = async (type: ChatContextType, enabled: boolean): Promise<void> => {
-		if (!action.contexts) {
-			action.contexts = [];
-		}
-
-		if (enabled) {
-			if (!action.contexts.some(c => c.type === type)) {
-				action.contexts.push({
-					id: generateId(),
-					type
-				});
-			}
-		} else {
-			action.contexts = action.contexts.filter(c => c.type !== type);
-		}
-
-		await plugin.saveSettings();
-
-		if (isExpanded()) {
-			callbacks.setExpandState({ workflowId: workflow.id });
-		}
-		callbacks.refresh();
-	};
-
-	// Context section container
-	const contextSection = containerEl.createDiv('context-section');
-	contextSection.createDiv({ text: 'Context', cls: 'context-section-title' });
-
-	// Toggles row
-	const togglesRow = contextSection.createDiv('context-toggles-row');
-
-	// Add labeled toggle for each context type
-	const availableTypes = getAvailableContextTypes();
-	for (const contextType of availableTypes) {
-		const toggleContainer = togglesRow.createDiv('context-toggle-container');
-		toggleContainer.setAttribute('aria-label', CHAT_CONTEXT_TYPE_DESCRIPTIONS[contextType]);
-
-		const label = toggleContainer.createSpan('context-toggle-label');
-		label.textContent = CHAT_CONTEXT_TYPE_LABELS[contextType];
-
-		const toggleWrapper = toggleContainer.createDiv('context-toggle-wrapper');
-		new Setting(toggleWrapper)
-			.addToggle(toggle => toggle
-				.setValue(isContextEnabled(contextType))
-				.onChange(async (value) => {
-					await toggleContext(contextType, value);
-				}));
-	}
 }

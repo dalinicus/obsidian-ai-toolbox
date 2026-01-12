@@ -14,6 +14,7 @@ export interface VideoProcessorConfig {
     ytdlpLocation?: string;
     ffmpegLocation?: string;
     impersonateBrowser: string;
+    cookiesFromBrowser?: string;
     keepVideo: boolean;
     outputDirectory?: string;
 }
@@ -106,6 +107,10 @@ function spawnYtDlp(
 
         if (config.ffmpegLocation) {
             args.push('--ffmpeg-location', config.ffmpegLocation);
+        }
+
+        if (config.cookiesFromBrowser) {
+            args.push('--cookies-from-browser', config.cookiesFromBrowser);
         }
 
         args.push(
@@ -205,6 +210,7 @@ function settingsToProcessorConfig(settings: AIToolboxSettings): VideoProcessorC
         ytdlpLocation: settings.ytdlpLocation,
         ffmpegLocation: settings.ffmpegLocation,
         impersonateBrowser: settings.impersonateBrowser,
+        cookiesFromBrowser: settings.cookiesFromBrowser,
         keepVideo: settings.keepVideo,
         outputDirectory: settings.outputDirectory,
     };

@@ -14,7 +14,7 @@ export default class AIToolboxPlugin extends Plugin {
 		this.registerView(VIEW_TYPE_LOG, (leaf) => new LogPaneView(leaf, this));
 
 		// Add ribbon icon for log view
-		this.addRibbonIcon('scroll-text', 'Show AI Toolbox Log', () => {
+		this.addRibbonIcon('scroll-text', 'Show AI toolbox log', () => {
 			void this.activateLogView();
 		});
 
@@ -41,8 +41,7 @@ export default class AIToolboxPlugin extends Plugin {
 	}
 
 	onunload() {
-		// Clean up log view leaves
-		this.app.workspace.detachLeavesOfType(VIEW_TYPE_LOG);
+		// Log views are cleaned up automatically by Obsidian when the plugin unloads
 	}
 
 	/**
@@ -61,7 +60,7 @@ export default class AIToolboxPlugin extends Plugin {
 		}
 
 		if (leaf) {
-			workspace.revealLeaf(leaf);
+			await workspace.revealLeaf(leaf);
 		}
 	}
 

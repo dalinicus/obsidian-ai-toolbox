@@ -61,11 +61,6 @@ export type WorkflowType = 'chat' | 'transcription';
 export type TranscriptionMediaType = 'video' | 'audio';
 
 /**
- * Source type for transcription input
- */
-export type TranscriptionSourceType = 'select-file-from-vault' | 'url-from-clipboard' | 'url-from-selection';
-
-/**
  * Timestamp granularity for transcription output.
  * - 'disabled': No timestamps (uses simpler JSON format, reduces token usage)
  * - 'segment': Timestamps at sentence/phrase level
@@ -78,7 +73,8 @@ export type TimestampGranularity = 'disabled' | 'segment' | 'word';
  */
 export interface TranscriptionContextConfig {
 	mediaType: TranscriptionMediaType;
-	sourceType: TranscriptionSourceType;
+	/** Token name to resolve for the source URL (e.g., 'workflow.clipboard', 'chat1.response') */
+	sourceUrlToken?: string;
 }
 
 /**
@@ -170,7 +166,7 @@ export const DEFAULT_TRANSCRIPTION_ACTION: Omit<TranscriptionAction, 'id'> = {
 	type: 'transcription',
 	name: 'Transcription',
 	provider: null,
-	transcriptionContext: { mediaType: 'video', sourceType: 'url-from-clipboard' },
+	transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' },
 	language: '',
 	timestampGranularity: 'disabled'
 };
@@ -203,6 +199,7 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 
 export interface AIToolboxSettings {
 	impersonateBrowser: string;
+	cookiesFromBrowser: string;
 	ytdlpLocation: string;
 	ffmpegLocation: string;
 	outputDirectory: string;
@@ -222,6 +219,7 @@ export function generateId(): string {
 
 export const DEFAULT_SETTINGS: AIToolboxSettings = {
 	impersonateBrowser: 'chrome',
+	cookiesFromBrowser: '',
 	ytdlpLocation: '',
 	ffmpegLocation: '',
 	outputDirectory: '',
@@ -242,6 +240,7 @@ export interface ExpandOnNextRenderState {
 	providerId?: string;
 	modelId?: string;
 	workflowId?: string;
+	actionId?: string;
 	availableTokensExpanded?: boolean;
 }
 

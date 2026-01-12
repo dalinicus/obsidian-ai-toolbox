@@ -24,7 +24,6 @@ export type {
 	WorkflowType,
 	PromptSourceType,
 	TranscriptionMediaType,
-	TranscriptionSourceType,
 	TranscriptionContextConfig,
 	TimestampGranularity,
 	ChatContextType,

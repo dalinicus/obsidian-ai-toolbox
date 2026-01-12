@@ -1,4 +1,4 @@
-import { ActionType, TimestampGranularity } from "../settings/types";
+import { ActionType, TimestampGranularity, WorkflowConfig } from "../settings/types";
 
 /**
  * Token definition for display in the settings UI
@@ -49,6 +49,16 @@ export interface TranscriptionWorkflowTokens {
 }
 
 /**
+ * Token definitions for workflow context (available to all actions)
+ */
+export const WORKFLOW_CONTEXT_TOKENS: TokenDefinition[] = [
+	{ name: 'workflow.selection', description: 'The currently selected text in the editor' },
+	{ name: 'workflow.clipboard', description: 'The current contents of the system clipboard' },
+	{ name: 'workflow.file.content', description: 'The full contents of the active file' },
+	{ name: 'workflow.file.path', description: 'The path of the active file' }
+];
+
+/**
  * Token definitions for chat workflows (ordered for template generation)
  */
 export const CHAT_WORKFLOW_TOKENS: TokenDefinition[] = [
@@ -68,21 +78,6 @@ export const TRANSCRIPTION_WORKFLOW_TOKENS: TokenDefinition[] = [
 	{ name: 'transcription', description: 'The plain transcription text (no timestamps)' },
 	{ name: 'transcriptionWithTimestamps', description: 'The transcription with [MM:SS] timestamps' }
 ];
-
-/**
- * Human-readable labels for token names (used in template generation)
- */
-const TOKEN_LABELS: Record<string, string> = {
-	prompt: 'Prompt',
-	response: 'Response',
-	title: 'Title',
-	author: 'Author',
-	sourceUrl: 'Source URL',
-	description: 'Description',
-	tags: 'Tags',
-	transcription: 'Transcription',
-	transcriptionWithTimestamps: 'Transcription (with timestamps)'
-};
 
 /**
  * Options for getting token definitions
@@ -135,46 +130,62 @@ export function getActionTokens(
 }
 
 /**
- * Get token definitions for a workflow used as a context source.
- * Returns tokens from the last action, prefixed with the workflow ID.
- *
- * @param workflowId - The ID of the workflow
- * @param lastActionType - The type of the last action in the workflow
- * @param options - Optional settings like timestampGranularity
+ * Token group for organizing available tokens in the UI
  */
-export function getWorkflowContextTokens(
-	workflowId: string,
-	lastActionType: ActionType,
-	options?: TokenDefinitionOptions
-): TokenDefinition[] {
-	const baseTokens = getTokenDefinitionsForActionType(lastActionType, options);
-
-	return baseTokens.map(token => ({
-		name: `${workflowId}.${token.name}`,
-		description: token.description
-	}));
+export interface TokenGroup {
+	/** Display name for this group */
+	name: string;
+	/** Tokens in this group */
+	tokens: TokenDefinition[];
 }
 
 /**
- * Generate a formatted template string containing all tokens for a workflow.
- * Used for copying a complete set of token references to the clipboard.
- *
- * @param workflowId - The ID of the workflow
- * @param lastActionType - The type of the last action in the workflow
- * @param options - Optional settings like timestampGranularity
+ * Generate a formatted template string for a token group.
+ * Format:
+ * Group Name
+ * - label: {{tokenName}}
  */
-export function generateWorkflowTokenTemplate(
-	workflowId: string,
-	lastActionType: ActionType,
-	options?: TokenDefinitionOptions
-): string {
-	const tokens = getTokenDefinitionsForActionType(lastActionType, options);
-
-	return tokens
-		.map(token => {
-			const label = TOKEN_LABELS[token.name] || token.name;
-			return `- ${label}: {{${workflowId}.${token.name}}}`;
-		})
-		.join('\n');
+export function generateGroupTemplate(group: TokenGroup): string {
+	const lines = [group.name];
+	for (const token of group.tokens) {
+		const tokenName = token.name.split('.').pop() || token.name;
+		lines.push(`- ${tokenName}: {{${token.name}}}`);
+	}
+	return lines.join('\n');
 }
 
+/**
+ * Get all available tokens for a specific action in a workflow.
+ * Returns tokens grouped by source: workflow context and each previous action as its own group.
+ *
+ * @param workflow - The workflow containing the action
+ * @param actionIndex - The index of the action in the workflow
+ */
+export function getAvailableTokensForAction(
+	workflow: WorkflowConfig,
+	actionIndex: number
+): TokenGroup[] {
+	const groups: TokenGroup[] = [];
+
+	// Workflow context tokens (always available)
+	groups.push({
+		name: 'Workflow Context',
+		tokens: WORKFLOW_CONTEXT_TOKENS
+	});
+
+	// Each previous action becomes its own top-level group
+	const previousActions = workflow.actions.slice(0, actionIndex);
+	for (const prevAction of previousActions) {
+		const options: TokenDefinitionOptions = {};
+		if (prevAction.type === 'transcription') {
+			options.timestampGranularity = prevAction.timestampGranularity;
+		}
+		const tokens = getActionTokens(prevAction.id, prevAction.type, options);
+		groups.push({
+			name: prevAction.name || `Action ${prevAction.id}`,
+			tokens
+		});
+	}
+
+	return groups;
+}

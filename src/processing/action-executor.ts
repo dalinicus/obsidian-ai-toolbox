@@ -1,20 +1,16 @@
 import { App, TFile } from 'obsidian';
-import { AIToolboxSettings, ChatAction, TranscriptionAction, WorkflowAction, TranscriptionSourceType } from '../settings';
+import { AIToolboxSettings, ChatAction, TranscriptionAction, WorkflowAction } from '../settings';
 import { createActionProvider, ChatMessage, TranscriptionOptions } from '../providers';
 import {
-    InputHandler,
     InputContext,
     InputResult,
-    VaultFileInputHandler,
-    ClipboardUrlInputHandler,
-    SelectionUrlInputHandler
+    TokenUrlInputHandler
 } from '../handlers';
 import {
     createChatWorkflowTokens,
     createTranscriptionWorkflowTokens,
-    gatherContextValues,
-    replaceContextTokens,
-    hasContextTokens
+    ContextTokenValues,
+    replaceWorkflowContextTokens
 } from './workflow-chaining';
 import { logInfo, logDebug, logNotice, LogCategory } from '../logging';
 
@@ -56,6 +52,8 @@ export interface ActionExecutionContext {
     dependencyResults: Map<string, ActionExecutionResult>;
     /** The workflow name (for logging) */
     workflowName: string;
+    /** Workflow-level context values (clipboard, selection, etc.) gathered at workflow start */
+    workflowContext: ContextTokenValues;
 }
 
 /**
@@ -84,19 +82,43 @@ export function replaceActionTokens(
 }
 
 /**
- * Create an input handler based on the transcription source type.
+ * Resolve a token value from the execution context.
+ * Tokens can reference workflow context (e.g., 'workflow.clipboard') or
+ * previous action results (e.g., 'chat1.response').
  */
-function createInputHandler(sourceType: TranscriptionSourceType): InputHandler {
-    switch (sourceType) {
-        case 'select-file-from-vault':
-            return new VaultFileInputHandler();
-        case 'url-from-clipboard':
-            return new ClipboardUrlInputHandler();
-        case 'url-from-selection':
-            return new SelectionUrlInputHandler();
-        default:
-            return new VaultFileInputHandler();
+function resolveTokenValue(
+    tokenName: string,
+    context: ActionExecutionContext
+): string | undefined {
+    // Check if it's a workflow context token
+    if (tokenName.startsWith('workflow.')) {
+        const contextKey = tokenName.substring('workflow.'.length);
+        switch (contextKey) {
+            case 'selection':
+                return context.workflowContext.selection;
+            case 'clipboard':
+                return context.workflowContext.clipboard;
+            case 'file.content':
+                return context.workflowContext.fileContent;
+            case 'file.path':
+                return context.workflowContext.filePath;
+            default:
+                return undefined;
+        }
     }
+
+    // Check if it's a previous action token (e.g., 'chat1.response')
+    const dotIndex = tokenName.indexOf('.');
+    if (dotIndex > 0) {
+        const actionId = tokenName.substring(0, dotIndex);
+        const tokenKey = tokenName.substring(dotIndex + 1);
+        const actionResult = context.previousResults.get(actionId);
+        if (actionResult) {
+            return actionResult.tokens[tokenKey];
+        }
+    }
+
+    return undefined;
 }
 
 /**
@@ -171,11 +193,8 @@ export async function executeChatAction(
         promptText = replaceActionTokens(promptText, context.dependencyResults);
     }
 
-    // Replace context tokens ({{selection}}, {{clipboard}}, etc.)
-    if (hasContextTokens(promptText)) {
-        const contextValues = await gatherContextValues(context.app);
-        promptText = replaceContextTokens(promptText, contextValues);
-    }
+    // Replace workflow context tokens ({{workflow.selection}}, {{workflow.clipboard}}, etc.)
+    promptText = replaceWorkflowContextTokens(promptText, context.workflowContext);
 
     if (!promptText.trim()) {
         return { ...baseResult, error: 'Empty prompt text' };
@@ -229,8 +248,15 @@ export async function executeTranscriptionAction(
         return { ...baseResult, error: 'Provider does not support transcription' };
     }
 
-    const sourceType: TranscriptionSourceType = action.transcriptionContext?.sourceType ?? 'url-from-clipboard';
-    const inputHandler = createInputHandler(sourceType);
+    // Resolve the source URL from the configured token
+    const sourceUrlToken = action.transcriptionContext?.sourceUrlToken ?? 'workflow.clipboard';
+    const sourceUrl = resolveTokenValue(sourceUrlToken, context);
+
+    if (!sourceUrl || !sourceUrl.trim()) {
+        return { ...baseResult, error: `No URL found in token {{${sourceUrlToken}}}` };
+    }
+
+    const inputHandler = new TokenUrlInputHandler(sourceUrl);
 
     // Create a minimal workflow-like object for InputContext compatibility
     const inputContext: InputContext = {
@@ -250,7 +276,7 @@ export async function executeTranscriptionAction(
 
         const inputResult = await inputHandler.getInput(inputContext);
         if (!inputResult) {
-            return { ...baseResult, error: 'No input provided or cancelled' };
+            return { ...baseResult, error: 'Failed to extract audio from URL' };
         }
 
         logNotice(LogCategory.TRANSCRIPTION, `Transcribing audio...`);
