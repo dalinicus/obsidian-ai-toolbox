@@ -1,328 +1,189 @@
-import { App, Setting, AbstractInputSuggest, TFolder, TFile } from "obsidian";
+import { App, Setting, AbstractInputSuggest, TFolder, TFile, TAbstractFile } from "obsidian";
 
 /**
- * Internal folder suggestion component.
+ * Type of path selection.
  */
-class FolderSuggestInternal extends AbstractInputSuggest<TFolder> {
-    private textInputEl: HTMLInputElement;
+export type PathSelectionType = "folder" | "file";
 
-    constructor(app: App, inputEl: HTMLInputElement) {
+/**
+ * Represents a path item (folder or file) in the unified picker.
+ */
+interface PathItem {
+    type: PathSelectionType;
+    path: string;
+    displayPath: string;
+    item: TAbstractFile;
+}
+
+/**
+ * Unified path suggestion component that shows both folders and files.
+ */
+class UnifiedPathSuggest extends AbstractInputSuggest<PathItem> {
+    private textInputEl: HTMLInputElement;
+    private includeFiles: boolean;
+    private onPathSelected: (path: string, type: PathSelectionType) => void;
+
+    constructor(
+        app: App,
+        inputEl: HTMLInputElement,
+        includeFiles: boolean,
+        onPathSelected: (path: string, type: PathSelectionType) => void
+    ) {
         super(app, inputEl);
         this.textInputEl = inputEl;
+        this.includeFiles = includeFiles;
+        this.onPathSelected = onPathSelected;
     }
 
-    getSuggestions(inputStr: string): TFolder[] {
+    getSuggestions(inputStr: string): PathItem[] {
         const inputLower = inputStr.toLowerCase().trim();
-        const allFolders = this.getAllFolders();
+        const items = this.getAllItems();
 
         if (inputLower === "") {
-            return allFolders;
+            return items;
         }
 
-        return allFolders.filter(folder =>
-            folder.path.toLowerCase().includes(inputLower)
+        return items.filter(item =>
+            item.path.toLowerCase().includes(inputLower)
         );
     }
 
-    renderSuggestion(folder: TFolder, el: HTMLElement): void {
-        const displayPath = folder.path === "" ? "/" : folder.path;
-        el.createEl("div", { text: displayPath, cls: "folder-suggest-item" });
+    renderSuggestion(item: PathItem, el: HTMLElement): void {
+        el.addClass("path-picker-suggestion");
+        el.createEl("span", {
+            text: item.displayPath,
+            cls: `path-picker-${item.type}`
+        });
     }
 
-    selectSuggestion(folder: TFolder): void {
-        this.textInputEl.value = folder.path;
-        this.textInputEl.dispatchEvent(new Event("input", { bubbles: true }));
+    selectSuggestion(item: PathItem): void {
+        this.textInputEl.value = item.path;
+        this.textInputEl.dataset.selectionType = item.type;
+        this.onPathSelected(item.path, item.type);
         this.close();
     }
 
-    private getAllFolders(): TFolder[] {
-        const folders: TFolder[] = [];
-        
+    private getAllItems(): PathItem[] {
+        const items: PathItem[] = [];
+
+        // Add folders
         const rootFolder = this.app.vault.getRoot();
         if (rootFolder) {
-            folders.push(rootFolder);
+            items.push({
+                type: "folder",
+                path: "",
+                displayPath: "/ (root)",
+                item: rootFolder
+            });
         }
 
-        const allFolders = this.app.vault.getAllFolders();
-        folders.push(...allFolders);
+        for (const folder of this.app.vault.getAllFolders()) {
+            items.push({
+                type: "folder",
+                path: folder.path,
+                displayPath: folder.path,
+                item: folder
+            });
+        }
 
-        folders.sort((a, b) => {
+        // Add markdown files if enabled
+        if (this.includeFiles) {
+            for (const file of this.app.vault.getMarkdownFiles()) {
+                // Display path without .md extension
+                const displayPath = file.path.replace(/\.md$/, "");
+                items.push({
+                    type: "file",
+                    path: file.path,
+                    displayPath: displayPath,
+                    item: file
+                });
+            }
+        }
+
+        // Sort: folders first (root at top), then files, alphabetically within each group
+        items.sort((a, b) => {
+            if (a.type !== b.type) {
+                return a.type === "folder" ? -1 : 1;
+            }
+            // Root folder always first
             if (a.path === "") return -1;
             if (b.path === "") return 1;
             return a.path.localeCompare(b.path);
         });
 
-        return folders;
+        return items;
     }
 }
 
 /**
- * Internal file suggestion component that filters by folder.
+ * Options for the unified path picker.
  */
-class FileSuggestInternal extends AbstractInputSuggest<TFile> {
-    private textInputEl: HTMLInputElement;
-    private folderPath: string = "";
-
-    constructor(app: App, inputEl: HTMLInputElement) {
-        super(app, inputEl);
-        this.textInputEl = inputEl;
-    }
-
-    setFolderPath(folderPath: string): void {
-        this.folderPath = folderPath;
-    }
-
-    getSuggestions(inputStr: string): TFile[] {
-        const inputLower = inputStr.toLowerCase().trim();
-        const files = this.getFilesInFolder();
-
-        if (inputLower === "") {
-            return files;
-        }
-
-        return files.filter(file => {
-            const displayPath = this.getDisplayPath(file);
-            return displayPath.toLowerCase().includes(inputLower);
-        });
-    }
-
-    renderSuggestion(file: TFile, el: HTMLElement): void {
-        const displayPath = this.getDisplayPath(file);
-        el.createEl("div", { text: displayPath, cls: "file-suggest-item" });
-    }
-
-    selectSuggestion(file: TFile): void {
-        this.textInputEl.value = file.name;
-        this.textInputEl.dataset.fullPath = file.path;
-        this.textInputEl.dispatchEvent(new CustomEvent("file-selected", {
-            bubbles: true,
-            detail: { path: file.path, name: file.name }
-        }));
-        this.close();
-    }
-
-    private getDisplayPath(file: TFile): string {
-        if (this.folderPath && file.path.startsWith(this.folderPath + "/")) {
-            return file.path.substring(this.folderPath.length + 1);
-        }
-        return file.path;
-    }
-
-    private getFilesInFolder(): TFile[] {
-        const allFiles = this.app.vault.getFiles();
-        
-        if (!this.folderPath) {
-            return allFiles.sort((a, b) => a.path.localeCompare(b.path));
-        }
-
-        const normalizedFolder = this.folderPath.replace(/\/$/, "");
-        const folder = this.app.vault.getAbstractFileByPath(normalizedFolder);
-        
-        if (!(folder instanceof TFolder)) {
-            return [];
-        }
-
-        const filesInFolder = allFiles.filter(file => {
-            if (normalizedFolder === "") {
-                return true;
-            }
-            return file.path.startsWith(normalizedFolder + "/");
-        });
-
-        filesInFolder.sort((a, b) => a.path.localeCompare(b.path));
-        return filesInFolder;
-    }
-}
-
-/**
- * Mode for the path picker component.
- */
-export type PathPickerMode = "folder-only" | "folder-file";
-
-/**
- * Base options for the path picker.
- */
-interface PathPickerBaseOptions {
+export interface PathPickerOptions {
     containerEl: HTMLElement;
     app: App;
     name: string;
     description: string;
-    folderPlaceholder?: string;
-    initialFolderPath?: string;
-    onFolderChange?: (folderPath: string) => void;
+    placeholder?: string;
+    initialPath?: string;
+    /** If true, shows both folders and files; if false, only folders */
+    allowFiles?: boolean;
+    /** Called when the user selects a path */
+    onChange?: (path: string, type: PathSelectionType) => void;
 }
 
 /**
- * Options for folder-only mode.
+ * Result from creating a path picker.
  */
-export interface FolderOnlyPickerOptions extends PathPickerBaseOptions {
-    mode: "folder-only";
-}
-
-/**
- * Options for folder-file cascading mode.
- */
-export interface FolderFilePickerOptions extends PathPickerBaseOptions {
-    mode: "folder-file";
-    filePlaceholder?: string;
-    initialFilePath?: string;
-    onFileChange?: (filePath: string) => void;
-}
-
-export type PathPickerOptions = FolderOnlyPickerOptions | FolderFilePickerOptions;
-
-/**
- * Result for folder-only mode.
- */
-export interface FolderOnlyPickerResult {
+export interface PathPickerResult {
     setting: Setting;
-    folderInputEl: HTMLInputElement;
+    inputEl: HTMLInputElement;
 }
 
 /**
- * Result for folder-file mode.
- */
-export interface FolderFilePickerResult {
-    setting: Setting;
-    folderInputEl: HTMLInputElement;
-    fileInputEl: HTMLInputElement;
-    fileSuggest: FileSuggestInternal;
-}
-
-export type PathPickerResult<T extends PathPickerOptions> =
-    T extends FolderOnlyPickerOptions ? FolderOnlyPickerResult : FolderFilePickerResult;
-
-/**
- * Create a unified path picker component.
+ * Create a unified path picker component with a single search input.
  *
- * Supports two modes:
- * - "folder-only": Shows only a folder selection input
- * - "folder-file": Shows folder and file selection inputs side-by-side
+ * Shows folders and optionally files in one searchable list.
+ * Automatically determines selection type based on what the user picks.
  */
-export function createPathPicker<T extends PathPickerOptions>(options: T): PathPickerResult<T> {
-    if (options.mode === "folder-only") {
-        return createFolderOnlyPicker(options) as PathPickerResult<T>;
-    } else {
-        return createFolderFilePicker(options) as PathPickerResult<T>;
-    }
-}
-
-function createFolderOnlyPicker(options: FolderOnlyPickerOptions): FolderOnlyPickerResult {
+export function createPathPicker(options: PathPickerOptions): PathPickerResult {
     const {
         containerEl,
         app,
         name,
         description,
-        folderPlaceholder = "Select folder...",
-        initialFolderPath = "",
-        onFolderChange
+        placeholder = "Search...",
+        initialPath = "",
+        allowFiles = false,
+        onChange
     } = options;
 
-    let folderInputEl: HTMLInputElement;
+    let inputEl: HTMLInputElement;
 
     const setting = new Setting(containerEl)
         .setName(name)
         .setDesc(description)
-        .addSearch(folderSearch => {
-            folderInputEl = folderSearch.inputEl;
-            folderSearch
-                .setPlaceholder(folderPlaceholder)
-                .setValue(initialFolderPath)
-                .onChange((value) => {
-                    onFolderChange?.(value);
-                });
+        .addSearch(search => {
+            inputEl = search.inputEl;
+            search
+                .setPlaceholder(placeholder)
+                .setValue(initialPath);
 
-            new FolderSuggestInternal(app, folderSearch.inputEl);
-            folderSearch.inputEl.addClass("path-picker-folder-input");
+            new UnifiedPathSuggest(
+                app,
+                search.inputEl,
+                allowFiles,
+                (path, type) => {
+                    onChange?.(path, type);
+                }
+            );
+
+            search.inputEl.addClass("path-picker-input");
         });
 
     setting.settingEl.addClass("path-picker");
 
     return {
         setting,
-        folderInputEl: folderInputEl!
+        inputEl: inputEl!
     };
 }
-
-function createFolderFilePicker(options: FolderFilePickerOptions): FolderFilePickerResult {
-    const {
-        containerEl,
-        app,
-        name,
-        description,
-        folderPlaceholder = "Select folder...",
-        filePlaceholder = "Select file...",
-        initialFolderPath = "",
-        initialFilePath = "",
-        onFolderChange,
-        onFileChange
-    } = options;
-
-    let folderInputEl: HTMLInputElement;
-    let fileInputEl: HTMLInputElement;
-    let fileSuggest: FileSuggestInternal;
-
-    const setting = new Setting(containerEl)
-        .setName(name)
-        .setDesc(description)
-        .addSearch(folderSearch => {
-            folderInputEl = folderSearch.inputEl;
-            folderSearch
-                .setPlaceholder(folderPlaceholder)
-                .setValue(initialFolderPath)
-                .onChange((value) => {
-                    if (fileSuggest) {
-                        fileSuggest.setFolderPath(value);
-                    }
-                    // Enable/disable file input based on folder selection
-                    if (fileInputEl) {
-                        fileInputEl.disabled = !value;
-                        // Clear file if folder is cleared
-                        if (!value) {
-                            fileInputEl.value = "";
-                            fileInputEl.dataset.fullPath = "";
-                            onFileChange?.("");
-                        }
-                    }
-                    onFolderChange?.(value);
-                });
-
-            new FolderSuggestInternal(app, folderSearch.inputEl);
-            folderSearch.inputEl.addClass("path-picker-folder-input");
-        })
-        .addSearch(fileSearch => {
-            fileInputEl = fileSearch.inputEl;
-
-            // Extract just the filename from the initial path for display
-            const initialFileName = initialFilePath ? initialFilePath.split("/").pop() ?? "" : "";
-
-            fileSearch
-                .setPlaceholder(filePlaceholder)
-                .setValue(initialFileName);
-
-            // Disable file input if no folder is selected
-            fileSearch.inputEl.disabled = !initialFolderPath;
-
-            // Store the full path in dataset
-            fileSearch.inputEl.dataset.fullPath = initialFilePath;
-
-            // Listen for file selection (custom event with full path)
-            fileSearch.inputEl.addEventListener("file-selected", ((e: CustomEvent<{ path: string }>) => {
-                onFileChange?.(e.detail.path);
-            }) as EventListener);
-
-            fileSuggest = new FileSuggestInternal(app, fileSearch.inputEl);
-            fileSuggest.setFolderPath(initialFolderPath);
-            fileSearch.inputEl.addClass("path-picker-file-input");
-        });
-
-    setting.settingEl.addClass("path-picker", "path-picker-folder-file");
-
-    return {
-        setting,
-        folderInputEl: folderInputEl!,
-        fileInputEl: fileInputEl!,
-        fileSuggest: fileSuggest!
-    };
-}
-

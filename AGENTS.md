@@ -123,6 +123,37 @@ npm run build
 - Attach `manifest.json`, `main.js`, and `styles.css` (if present) to the release as individual assets.
 - After the initial release, follow the process to add/update your plugin in the community catalog as required.
 
+### Release preparation checklist
+
+Before creating a GitHub release, follow these steps to update version files:
+
+#### 1. Update manifest.json
+- Bump the `version` field in `manifest.json` following Semantic Versioning (x.y.z format)
+- Ensure the `minAppVersion` is accurate for any new Obsidian APIs used
+
+#### 2. Update versions.json
+The `versions.json` file maps plugin versions to minimum Obsidian app versions. Update it based on the release type:
+
+**For patch releases (x.y.Z):**
+- Add the new version entry: `"x.y.z": "minimum-app-version"`
+- Keep all existing entries unchanged
+
+**For minor releases (x.Y.0):**
+- Add the new version entry: `"x.y.0": "minimum-app-version"`
+- For the previous minor version (x.Y-1.*), keep only the latest patch version
+- Remove all other patch versions for that minor version
+- Example: If releasing 1.2.0, keep only 1.1.3 (remove 1.1.0, 1.1.1, 1.1.2)
+
+**For major releases (X.0.0):**
+- Add the new version entry: `"x.0.0": "minimum-app-version"`
+- For the previous major version (X-1.*.*), keep the latest two minor versions, each with their latest patch version
+- Remove all other minor and patch versions for that major version
+- Example: If releasing 2.0.0, keep only 1.2.3 and 1.3.2 (remove 1.0.0, 1.1.0, 1.2.1, 1.2.2, 1.3.0, 1.3.1, etc.)
+
+#### 3. Run linting
+- Run `eslint ./src/` to check for code quality issues
+- Fix any errors or warnings before creating the release
+
 ## Security, privacy, and compliance
 
 Follow Obsidian's **Developer Policies** and **Plugin Guidelines**. In particular:

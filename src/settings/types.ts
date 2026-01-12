@@ -114,7 +114,6 @@ export interface WorkflowConfig {
 	type: WorkflowType;
 	promptText: string;
 	promptSourceType: PromptSourceType;
-	promptFolderPath: string;
 	promptFilePath: string;
 	provider: ProviderModelSelection | null;
 	outputType: WorkflowOutputType;
@@ -139,7 +138,6 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	type: 'chat',
 	promptText: '',
 	promptSourceType: 'inline',
-	promptFolderPath: '',
 	promptFilePath: '',
 	provider: null,
 	outputType: 'popup',

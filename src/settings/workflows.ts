@@ -204,21 +204,15 @@ function displayChatWorkflowSettings(
 	// Prompt file picker (only show when source is from-file)
 	if (promptSourceType === 'from-file') {
 		createPathPicker({
-			mode: 'folder-file',
 			containerEl: contentContainer,
 			app: plugin.app,
 			name: 'Prompt file',
-			description: 'First select a folder to filter, then select a file from that folder',
-			initialFolderPath: workflow.promptFolderPath ?? '',
-			initialFilePath: workflow.promptFilePath ?? '',
-			folderPlaceholder: 'Select folder...',
-			filePlaceholder: 'Select file...',
-			onFolderChange: async (folderPath: string) => {
-				workflow.promptFolderPath = folderPath;
-				await plugin.saveSettings();
-			},
-			onFileChange: async (filePath: string) => {
-				workflow.promptFilePath = filePath;
+			description: 'Search for a file to use as the prompt template',
+			placeholder: 'Search for file...',
+			initialPath: workflow.promptFilePath ?? '',
+			allowFiles: true,
+			onChange: async (path: string) => {
+				workflow.promptFilePath = path;
 				await plugin.saveSettings();
 			}
 		});
@@ -277,15 +271,14 @@ function displayChatWorkflowSettings(
 		// Output folder (only show if output type is new-note)
 		if (workflow.outputType === 'new-note') {
 			createPathPicker({
-				mode: 'folder-only',
 				containerEl: contentContainer,
 				app: plugin.app,
 				name: 'Output folder',
 				description: 'Folder where notes will be created (leave empty to use default)',
-				folderPlaceholder: 'Default folder',
-				initialFolderPath: workflow.outputFolder || '',
-				onFolderChange: async (folderPath: string) => {
-					workflow.outputFolder = folderPath;
+				placeholder: 'Search for folder...',
+				initialPath: workflow.outputFolder || '',
+				onChange: async (path: string) => {
+					workflow.outputFolder = path;
 					await plugin.saveSettings();
 				}
 			});
@@ -532,15 +525,14 @@ function displayTranscriptionWorkflowSettings(
 		// Output folder (only show if output type is new-note)
 		if (workflow.outputType === 'new-note') {
 			createPathPicker({
-				mode: 'folder-only',
 				containerEl: contentContainer,
 				app: plugin.app,
 				name: 'Output folder',
 				description: 'Folder where transcription notes will be created (leave empty to use default)',
-				folderPlaceholder: 'Default folder',
-				initialFolderPath: workflow.outputFolder || '',
-				onFolderChange: async (folderPath: string) => {
-					workflow.outputFolder = folderPath;
+				placeholder: 'Search for folder...',
+				initialPath: workflow.outputFolder || '',
+				onChange: async (path: string) => {
+					workflow.outputFolder = path;
 					await plugin.saveSettings();
 				}
 			});
