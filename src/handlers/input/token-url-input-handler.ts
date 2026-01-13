@@ -1,6 +1,6 @@
 import { Notice } from 'obsidian';
 import { InputHandler, InputContext, InputResult } from './types';
-import { extractAudioFromUrl } from '../../processing';
+import { extractAudioFromUrl, VideoExtractionSettings } from '../../processing';
 
 /**
  * Input handler that extracts audio from a URL resolved from a token value.
@@ -8,9 +8,11 @@ import { extractAudioFromUrl } from '../../processing';
  */
 export class TokenUrlInputHandler implements InputHandler {
     private url: string;
+    private extractionSettings: VideoExtractionSettings;
 
-    constructor(url: string) {
+    constructor(url: string, extractionSettings: VideoExtractionSettings) {
         this.url = url;
+        this.extractionSettings = extractionSettings;
     }
 
     async getInput(context: InputContext): Promise<InputResult | null> {
@@ -21,7 +23,7 @@ export class TokenUrlInputHandler implements InputHandler {
 
         new Notice('Processing URL from token...');
 
-        const result = await extractAudioFromUrl(this.url.trim(), context.settings);
+        const result = await extractAudioFromUrl(this.url.trim(), context.settings, this.extractionSettings);
 
         if (!result) {
             return null;

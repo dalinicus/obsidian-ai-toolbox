@@ -14,7 +14,7 @@ export interface VideoProcessorConfig {
     ytdlpLocation?: string;
     ffmpegLocation?: string;
     impersonateBrowser: string;
-    cookiesFromBrowser?: string;
+    useBrowserCookies: boolean;
     keepVideo: boolean;
     outputDirectory?: string;
 }
@@ -109,8 +109,8 @@ function spawnYtDlp(
             args.push('--ffmpeg-location', config.ffmpegLocation);
         }
 
-        if (config.cookiesFromBrowser) {
-            args.push('--cookies-from-browser', config.cookiesFromBrowser);
+        if (config.useBrowserCookies) {
+            args.push('--cookies-from-browser', config.impersonateBrowser);
         }
 
         args.push(
@@ -203,14 +203,23 @@ export interface ExtractAudioResult {
 }
 
 /**
- * Converts AIToolboxSettings to VideoProcessorConfig.
+ * Browser and cookie settings for video extraction.
+ * These are required per-action settings for transcription workflows.
  */
-function settingsToProcessorConfig(settings: AIToolboxSettings): VideoProcessorConfig {
+export interface VideoExtractionSettings {
+    impersonateBrowser: string;
+    useBrowserCookies: boolean;
+}
+
+/**
+ * Converts AIToolboxSettings and extraction settings to VideoProcessorConfig.
+ */
+function settingsToProcessorConfig(settings: AIToolboxSettings, extractionSettings: VideoExtractionSettings): VideoProcessorConfig {
     return {
         ytdlpLocation: settings.ytdlpLocation,
         ffmpegLocation: settings.ffmpegLocation,
-        impersonateBrowser: settings.impersonateBrowser,
-        cookiesFromBrowser: settings.cookiesFromBrowser,
+        impersonateBrowser: extractionSettings.impersonateBrowser,
+        useBrowserCookies: extractionSettings.useBrowserCookies,
         keepVideo: settings.keepVideo,
         outputDirectory: settings.outputDirectory,
     };
@@ -221,8 +230,16 @@ function settingsToProcessorConfig(settings: AIToolboxSettings): VideoProcessorC
  * Supports TikTok, YouTube, and other platforms supported by yt-dlp.
  * Uses yt-dlp directly via child_process for audio extraction.
  * Requires yt-dlp and ffmpeg to be installed and available in PATH.
+ *
+ * @param url - The video URL to extract audio from
+ * @param settings - Plugin settings for yt-dlp/ffmpeg paths
+ * @param extractionSettings - Browser and cookie settings for video extraction
  */
-export async function extractAudioFromUrl(url: string, settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
+export async function extractAudioFromUrl(
+    url: string,
+    settings: AIToolboxSettings,
+    extractionSettings: VideoExtractionSettings
+): Promise<ExtractAudioResult | null> {
     try {
         if (!url || !url.trim()) {
             logNotice(LogCategory.TRANSCRIPTION, 'URL is empty');
@@ -243,7 +260,7 @@ export async function extractAudioFromUrl(url: string, settings: AIToolboxSettin
             ? handler.getYtDlpArgs().outputConfig.filenameTemplate
             : '%(title)s_%(id)s';
 
-        const config = settingsToProcessorConfig(settings);
+        const config = settingsToProcessorConfig(settings, extractionSettings);
         const outputDir = getOutputDirectory(config);
         const outputTemplate = path.join(outputDir, `${filenameTemplate}.%(ext)s`);
 
@@ -268,25 +285,4 @@ export async function extractAudioFromUrl(url: string, settings: AIToolboxSettin
     }
 }
 
-/**
- * Downloads audio from a video URL in the clipboard for transcription.
- * Supports TikTok, YouTube, and other platforms supported by yt-dlp.
- * Uses yt-dlp directly via child_process for audio extraction.
- * Requires yt-dlp and ffmpeg to be installed and available in PATH.
- */
-export async function extractAudioFromClipboard(settings: AIToolboxSettings): Promise<ExtractAudioResult | null> {
-    try {
-        const clipboardText = await navigator.clipboard.readText();
 
-        if (!clipboardText) {
-            logNotice(LogCategory.TRANSCRIPTION, 'Clipboard is empty');
-            return null;
-        }
-
-        return extractAudioFromUrl(clipboardText, settings);
-
-    } catch (error) {
-        logNotice(LogCategory.TRANSCRIPTION, `Failed to read clipboard: ${error instanceof Error ? error.message : String(error)}`, error);
-        return null;
-    }
-}

@@ -57,8 +57,10 @@ export type WorkflowType = 'chat' | 'transcription';
 
 /**
  * Media type for transcription context
+ * - 'video-url': Video from a URL (requires yt-dlp to extract audio)
+ * - 'audio-file': Local audio file from the vault
  */
-export type TranscriptionMediaType = 'video' | 'audio';
+export type TranscriptionMediaType = 'video-url' | 'audio-file';
 
 /**
  * Timestamp granularity for transcription output.
@@ -73,8 +75,12 @@ export type TimestampGranularity = 'disabled' | 'segment' | 'word';
  */
 export interface TranscriptionContextConfig {
 	mediaType: TranscriptionMediaType;
-	/** Token name to resolve for the source URL (e.g., 'workflow.clipboard', 'chat1.response') */
+	/** Token name to resolve for the source URL/path (e.g., 'workflow.clipboard', 'chat1.response') */
 	sourceUrlToken?: string;
+	/** Browser to impersonate when extracting audio (video-url only) */
+	impersonateBrowser?: string;
+	/** Whether to use browser cookies for authentication (video-url only) */
+	useBrowserCookies?: boolean;
 }
 
 /**
@@ -97,7 +103,7 @@ export interface ChatContextConfig {
 /**
  * Action type options - determines what kind of operation an action performs
  */
-export type ActionType = 'chat' | 'transcription';
+export type ActionType = 'chat' | 'transcription' | 'http-request';
 
 /**
  * Base action interface with common properties for all action types
@@ -142,9 +148,18 @@ export interface TranscriptionAction extends BaseAction {
 }
 
 /**
+ * HTTP request action configuration - makes a GET request to a URL
+ */
+export interface HttpRequestAction extends BaseAction {
+	type: 'http-request';
+	/** Token name to resolve for the source URL (e.g., 'workflow.clipboard', 'action1.response') */
+	sourceUrlToken: string;
+}
+
+/**
  * Union type for all action types
  */
-export type WorkflowAction = ChatAction | TranscriptionAction;
+export type WorkflowAction = ChatAction | TranscriptionAction | HttpRequestAction;
 
 /**
  * Default configuration for a new chat action
@@ -166,9 +181,24 @@ export const DEFAULT_TRANSCRIPTION_ACTION: Omit<TranscriptionAction, 'id'> = {
 	type: 'transcription',
 	name: 'Transcription',
 	provider: null,
-	transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' },
+	transcriptionContext: {
+		mediaType: 'video-url',
+		sourceUrlToken: 'workflow.clipboard',
+		impersonateBrowser: 'chrome',
+		useBrowserCookies: false
+	},
 	language: '',
 	timestampGranularity: 'disabled'
+};
+
+/**
+ * Default configuration for a new HTTP request action
+ */
+export const DEFAULT_HTTP_REQUEST_ACTION: Omit<HttpRequestAction, 'id'> = {
+	type: 'http-request',
+	name: 'HTTP request',
+	provider: null,
+	sourceUrlToken: 'workflow.clipboard'
 };
 
 /**
@@ -185,6 +215,8 @@ export interface WorkflowConfig {
 	outputType: WorkflowOutputType;
 	/** Folder for output (when outputType is 'new-note') */
 	outputFolder: string;
+	/** Whether to show this workflow as a command in the command palette */
+	showInCommandPalette: boolean;
 }
 
 /**
@@ -194,12 +226,11 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	name: 'New workflow',
 	actions: [],
 	outputType: 'popup',
-	outputFolder: ''
+	outputFolder: '',
+	showInCommandPalette: false
 };
 
 export interface AIToolboxSettings {
-	impersonateBrowser: string;
-	cookiesFromBrowser: string;
 	ytdlpLocation: string;
 	ffmpegLocation: string;
 	outputDirectory: string;
@@ -218,8 +249,6 @@ export function generateId(): string {
 }
 
 export const DEFAULT_SETTINGS: AIToolboxSettings = {
-	impersonateBrowser: 'chrome',
-	cookiesFromBrowser: '',
 	ytdlpLocation: '',
 	ffmpegLocation: '',
 	outputDirectory: '',

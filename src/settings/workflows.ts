@@ -1,4 +1,4 @@
-import { Setting } from "obsidian";
+import { Setting, Notice, setIcon } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
@@ -6,6 +6,7 @@ import {
 	WorkflowAction,
 	ChatAction,
 	TranscriptionAction,
+	HttpRequestAction,
 	ActionType,
 	PromptSourceType,
 	TranscriptionMediaType,
@@ -14,17 +15,20 @@ import {
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG,
 	DEFAULT_CHAT_ACTION,
-	DEFAULT_TRANSCRIPTION_ACTION
+	DEFAULT_TRANSCRIPTION_ACTION,
+	DEFAULT_HTTP_REQUEST_ACTION
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
+import { globalDeleteModeManager, nestedDeleteModeManager } from "../components/delete-mode-manager";
+import { createEntityListHeader } from "../components/entity-list-header";
+import { createMoveHandlers } from "../components/ordered-list-utils";
 import {
 	getAvailableTokensForAction,
 	TokenGroup,
 	TokenDefinition,
 	generateGroupTemplate
 } from "../tokens";
-import { setIcon, Notice } from "obsidian";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -53,6 +57,9 @@ const PROMPT_SOURCE_OPTIONS: Record<PromptSourceType, string> = {
 	'from-file': 'From file'
 };
 
+// Key for workflow-level delete mode in the global manager
+const WORKFLOWS_DELETE_MODE_KEY = '__workflows__';
+
 /**
  * Display the workflows settings tab content
  */
@@ -61,28 +68,41 @@ export function displayWorkflowsSettings(
 	plugin: AIToolboxPlugin,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
-	// Add workflow button
-	new Setting(containerEl)
-		.setName('Workflows')
-		.setDesc('Configure custom workflows with actions')
-		.addButton(button => button
-			.setButtonText('Add workflow')
-			.setCta()
-			.onClick(async () => {
-				const newWorkflow: WorkflowConfig = {
-					id: generateId(),
-					...DEFAULT_WORKFLOW_CONFIG,
-					actions: []  // Create new array to avoid shared reference
-				};
-				plugin.settings.workflows.push(newWorkflow);
-				callbacks.setExpandState({ workflowId: newWorkflow.id });
-				await plugin.saveSettings();
-				callbacks.refresh();
-			}));
+	const isWorkflowDeleteMode = globalDeleteModeManager.get(WORKFLOWS_DELETE_MODE_KEY);
+
+	// Add workflow header with delete mode toggle and add button
+	createEntityListHeader({
+		containerEl,
+		label: 'Workflows',
+		description: 'Configure custom workflows with actions',
+		isDeleteMode: isWorkflowDeleteMode,
+		onDeleteModeChange: (value) => {
+			globalDeleteModeManager.set(WORKFLOWS_DELETE_MODE_KEY, value);
+			callbacks.refresh();
+		},
+		addButtonText: 'Add workflow',
+		addButtonCta: true,
+		onAdd: async () => {
+			const newWorkflow: WorkflowConfig = {
+				id: generateId(),
+				...DEFAULT_WORKFLOW_CONFIG,
+				actions: []  // Create new array to avoid shared reference
+			};
+			plugin.settings.workflows.push(newWorkflow);
+			callbacks.setExpandState({ workflowId: newWorkflow.id });
+			await plugin.saveSettings();
+			callbacks.refresh();
+		}
+	});
+
+	// Add horizontal rule separator
+	containerEl.createEl('hr', { cls: 'entity-list-separator' });
 
 	// Display each workflow
-	for (const workflow of plugin.settings.workflows) {
-		displayWorkflowSettings(containerEl, plugin, workflow, callbacks);
+	for (let i = 0; i < plugin.settings.workflows.length; i++) {
+		const workflow = plugin.settings.workflows[i];
+		if (!workflow) continue;
+		displayWorkflowSettings(containerEl, plugin, workflow, i, callbacks, isWorkflowDeleteMode);
 	}
 }
 
@@ -90,7 +110,9 @@ function displayWorkflowSettings(
 	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
 	workflow: WorkflowConfig,
-	callbacks: WorkflowSettingsCallbacks
+	index: number,
+	callbacks: WorkflowSettingsCallbacks,
+	isWorkflowDeleteMode: boolean
 ): void {
 	const expandState = callbacks.getExpandState();
 	const shouldExpand = expandState.workflowId === workflow.id;
@@ -100,11 +122,30 @@ function displayWorkflowSettings(
 		workflow.actions = [];
 	}
 
-	// Determine icon based on first action type (or default)
-	const firstAction = workflow.actions[0];
-	const icon = firstAction?.type === 'transcription' ? 'audio-lines' : 'message-circle';
+	// Determine icons based on all action types present in the workflow
+	const actionTypes = new Set(workflow.actions.map(a => a.type));
+	const icons: string[] = [];
+	if (actionTypes.has('chat')) {
+		icons.push('message-circle');
+	}
+	if (actionTypes.has('transcription')) {
+		icons.push('audio-lines');
+	}
+	if (actionTypes.has('http-request')) {
+		icons.push('globe');
+	}
 
 	const showAdvanced = callbacks.isAdvancedVisible();
+
+	// Create move handlers using utility
+	const moveHandlers = createMoveHandlers({
+		items: plugin.settings.workflows,
+		index,
+		isDeleteMode: isWorkflowDeleteMode,
+		saveSettings: () => plugin.saveSettings(),
+		preserveExpandState: () => callbacks.setExpandState({ workflowId: workflow.id }),
+		refresh: callbacks.refresh
+	});
 
 	const { contentContainer, updateTitle, isExpanded } = createCollapsibleSection({
 		containerEl,
@@ -114,16 +155,16 @@ function displayWorkflowSettings(
 		headerClass: 'workflow-header',
 		startExpanded: shouldExpand,
 		isHeading: true,
-		icon,
+		icons,
 		secondaryText: showAdvanced ? workflow.id : undefined,
-		onDelete: async () => {
-			const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
-			if (index !== -1) {
-				plugin.settings.workflows.splice(index, 1);
-				await plugin.saveSettings();
-				callbacks.refresh();
-			}
-		},
+		onMoveUp: moveHandlers.onMoveUp,
+		onMoveDown: moveHandlers.onMoveDown,
+		// Show delete button only when in delete mode
+		onDelete: isWorkflowDeleteMode ? async () => {
+			plugin.settings.workflows.splice(index, 1);
+			await plugin.saveSettings();
+			callbacks.refresh();
+		} : undefined,
 	});
 
 	// Workflow name
@@ -138,8 +179,22 @@ function displayWorkflowSettings(
 				await plugin.saveSettings();
 			}));
 
+	// Add separator between workflow name and actions
+	contentContainer.createEl('hr', { cls: 'workflow-actions-separator' });
+
 	// Actions section
 	displayActionsSection(contentContainer, plugin, workflow, callbacks, isExpanded);
+
+	// Show in command palette toggle
+	new Setting(contentContainer)
+		.setName('Show in command palette')
+		.setDesc('Register this workflow as a command in Obsidian\'s command palette')
+		.addToggle(toggle => toggle
+			.setValue(workflow.showInCommandPalette ?? false)
+			.onChange(async (value) => {
+				workflow.showInCommandPalette = value;
+				await plugin.saveSettings();
+			}));
 
 	// Output type
 	new Setting(contentContainer)
@@ -184,7 +239,8 @@ function displayWorkflowSettings(
  */
 const ACTION_TYPE_OPTIONS: Record<ActionType, string> = {
 	'chat': 'Chat',
-	'transcription': 'Transcription'
+	'transcription': 'Transcription',
+	'http-request': 'HTTP request'
 };
 
 /**
@@ -198,50 +254,74 @@ function displayActionsSection(
 	isExpanded: () => boolean
 ): void {
 	const actionsContainer = containerEl.createDiv('actions-section');
-	actionsContainer.createDiv({ text: 'Actions', cls: 'actions-section-title' });
 
-	// Add action button
-	new Setting(actionsContainer)
-		.addDropdown(dropdown => dropdown
-			.addOption('', 'Add action...')
-			.addOptions(ACTION_TYPE_OPTIONS)
-			.onChange(async (value) => {
-				if (!value) return;
+	// Get action delete mode state for this workflow from the nested manager
+	const isActionDeleteMode = nestedDeleteModeManager.get(workflow.id);
 
-				const actionType = value as ActionType;
-				let newAction: WorkflowAction;
+	// Add action controls header with delete mode toggle and add dropdown
+	createEntityListHeader({
+		containerEl: actionsContainer,
+		label: 'Actions',
+		description: 'Execute actions sequentially. Tokens from previous actions are available to prompts and templates.',
+		isDeleteMode: isActionDeleteMode,
+		onDeleteModeChange: (value) => {
+			nestedDeleteModeManager.set(workflow.id, value);
+			if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
+			}
+			callbacks.refresh();
+		},
+		addDropdownOptions: ACTION_TYPE_OPTIONS,
+		onDropdownSelect: async (value) => {
+			const actionType = value as ActionType;
+			let newAction: WorkflowAction;
 
-				if (actionType === 'chat') {
-					newAction = {
-						...DEFAULT_CHAT_ACTION,
-						id: generateId(),
-						name: `Chat ${workflow.actions.length + 1}`,
-						contexts: []  // Create new array to avoid shared reference
-					};
-				} else {
-					newAction = {
-						...DEFAULT_TRANSCRIPTION_ACTION,
-						id: generateId(),
-						name: `Transcription ${workflow.actions.length + 1}`,
-						// Create new object to avoid shared reference
-						transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' }
-					};
-				}
+			if (actionType === 'chat') {
+				newAction = {
+					...DEFAULT_CHAT_ACTION,
+					id: generateId(),
+					name: `Chat ${workflow.actions.length + 1}`,
+					contexts: []  // Create new array to avoid shared reference
+				};
+			} else if (actionType === 'transcription') {
+				newAction = {
+					...DEFAULT_TRANSCRIPTION_ACTION,
+					id: generateId(),
+					name: `Transcription ${workflow.actions.length + 1}`,
+					// Create new object to avoid shared reference
+					transcriptionContext: {
+						mediaType: 'video-url',
+						sourceUrlToken: 'workflow.clipboard',
+						impersonateBrowser: 'chrome',
+						useBrowserCookies: false
+					}
+				};
+			} else {
+				newAction = {
+					...DEFAULT_HTTP_REQUEST_ACTION,
+					id: generateId(),
+					name: `HTTP request ${workflow.actions.length + 1}`
+				};
+			}
 
-				workflow.actions.push(newAction);
-				await plugin.saveSettings();
+			workflow.actions.push(newAction);
+			await plugin.saveSettings();
 
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
-				callbacks.refresh();
-			}));
+			if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
+			}
+			callbacks.refresh();
+		}
+	});
 
-	// Display each action
-	for (let i = 0; i < workflow.actions.length; i++) {
-		const action = workflow.actions[i];
-		if (!action) continue;
-		displayActionSettings(actionsContainer, plugin, workflow, action, i, callbacks, isExpanded);
+	// Display each action in a grouped list container
+	if (workflow.actions.length > 0) {
+		const actionsList = actionsContainer.createDiv('actions-list');
+		for (let i = 0; i < workflow.actions.length; i++) {
+			const action = workflow.actions[i];
+			if (!action) continue;
+			displayActionSettings(actionsList, plugin, workflow, action, i, callbacks, isExpanded, isActionDeleteMode);
+		}
 	}
 }
 
@@ -255,11 +335,39 @@ function displayActionSettings(
 	action: WorkflowAction,
 	index: number,
 	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean
+	isExpanded: () => boolean,
+	isDeleteMode: boolean
 ): void {
-	const actionIcon = action.type === 'transcription' ? 'audio-lines' : 'message-circle';
+	let actionIcon = 'message-circle';
+	if (action.type === 'transcription') {
+		actionIcon = 'audio-lines';
+	} else if (action.type === 'http-request') {
+		actionIcon = 'globe';
+	}
 	const expandState = callbacks.getExpandState();
 	const shouldExpandAction = expandState.workflowId === workflow.id && expandState.actionId === action.id;
+
+	// We need isActionExpanded before creating move handlers, so we track it via a ref
+	let actionExpandedRef = { current: shouldExpandAction };
+
+	// Helper to preserve action expand state on refresh
+	const preserveActionExpandState = () => {
+		if (isExpanded() && actionExpandedRef.current) {
+			callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
+		} else if (isExpanded()) {
+			callbacks.setExpandState({ workflowId: workflow.id });
+		}
+	};
+
+	// Create move handlers using utility
+	const moveHandlers = createMoveHandlers({
+		items: workflow.actions,
+		index,
+		isDeleteMode,
+		saveSettings: () => plugin.saveSettings(),
+		preserveExpandState: preserveActionExpandState,
+		refresh: callbacks.refresh
+	});
 
 	const { contentContainer, updateTitle, isExpanded: isActionExpanded } = createCollapsibleSection({
 		containerEl,
@@ -269,25 +377,22 @@ function displayActionSettings(
 		headerClass: 'action-header',
 		startExpanded: shouldExpandAction,
 		isHeading: false,
-		icon: actionIcon,
-		onDelete: async () => {
+		icons: [actionIcon],
+		onMoveUp: moveHandlers.onMoveUp,
+		onMoveDown: moveHandlers.onMoveDown,
+		// Show delete button only when in delete mode
+		onDelete: isDeleteMode ? async () => {
 			workflow.actions.splice(index, 1);
 			await plugin.saveSettings();
 			if (isExpanded()) {
 				callbacks.setExpandState({ workflowId: workflow.id });
 			}
 			callbacks.refresh();
-		},
+		} : undefined,
 	});
 
-	// Helper to preserve action expand state on refresh
-	const preserveActionExpandState = () => {
-		if (isExpanded() && isActionExpanded()) {
-			callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
-		} else if (isExpanded()) {
-			callbacks.setExpandState({ workflowId: workflow.id });
-		}
-	};
+	// Update the ref to use the actual isExpanded function
+	actionExpandedRef = { get current() { return isActionExpanded(); } };
 
 	// Clear the action expand state after applying it
 	if (shouldExpandAction) {
@@ -314,8 +419,10 @@ function displayActionSettings(
 	// Route to type-specific settings
 	if (action.type === 'transcription') {
 		displayTranscriptionActionSettings(contentContainer, plugin, action, callbacks, workflow, preserveActionExpandState);
-	} else {
+	} else if (action.type === 'chat') {
 		displayChatActionSettings(contentContainer, plugin, action, callbacks, preserveActionExpandState);
+	} else {
+		displayHttpRequestActionSettings(contentContainer, plugin, action, callbacks, workflow, preserveActionExpandState);
 	}
 }
 
@@ -470,6 +577,20 @@ function displayChatActionSettings(
 }
 
 /**
+ * Browser options for yt-dlp
+ */
+const BROWSER_OPTIONS: Record<string, string> = {
+	'chrome': 'Chrome',
+	'edge': 'Edge',
+	'safari': 'Safari',
+	'firefox': 'Firefox',
+	'brave': 'Brave',
+	'chromium': 'Chromium',
+	'opera': 'Opera',
+	'vivaldi': 'Vivaldi'
+};
+
+/**
  * Display transcription action settings
  */
 function displayTranscriptionActionSettings(
@@ -485,29 +606,32 @@ function displayTranscriptionActionSettings(
 
 	// Ensure transcriptionContext exists
 	if (!action.transcriptionContext) {
-		action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
+		action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
 	}
 
 	// Media type dropdown
 	const mediaTypeOptions: Record<TranscriptionMediaType, string> = {
-		'video': 'Video',
-		'audio': 'Audio'
+		'video-url': 'Video URL',
+		'audio-file': 'Audio file'
 	};
+	const currentMediaType = action.transcriptionContext.mediaType;
 	new Setting(containerEl)
 		.setName('Media type')
 		.setDesc('The type of media to transcribe')
 		.addDropdown(dropdown => dropdown
 			.addOptions(mediaTypeOptions)
-			.setValue(action.transcriptionContext?.mediaType ?? 'video')
+			.setValue(currentMediaType ?? 'video-url')
 			.onChange(async (value) => {
 				if (!action.transcriptionContext) {
-					action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
+					action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
 				}
 				action.transcriptionContext.mediaType = value as TranscriptionMediaType;
 				await plugin.saveSettings();
+				preserveActionExpandState();
+				callbacks.refresh();
 			}));
 
-	// Source URL token picker
+	// Source token picker - label changes based on media type
 	const actionIndex = workflow.actions.findIndex(a => a.id === action.id);
 	const tokenGroups = getAvailableTokensForAction(workflow, actionIndex);
 
@@ -519,19 +643,56 @@ function displayTranscriptionActionSettings(
 		}
 	}
 
+	const sourceLabel = currentMediaType === 'audio-file' ? 'File path source' : 'Source URL';
+	const sourceDesc = currentMediaType === 'audio-file'
+		? 'Select a token containing the audio file path'
+		: 'Select a token containing the video URL';
+
 	new Setting(containerEl)
-		.setName('Source URL')
-		.setDesc('Select a token containing the video/audio URL')
+		.setName(sourceLabel)
+		.setDesc(sourceDesc)
 		.addDropdown(dropdown => dropdown
 			.addOptions(tokenOptions)
 			.setValue(action.transcriptionContext?.sourceUrlToken ?? 'workflow.clipboard')
 			.onChange(async (value) => {
 				if (!action.transcriptionContext) {
-					action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
+					action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
 				}
 				action.transcriptionContext.sourceUrlToken = value;
 				await plugin.saveSettings();
 			}));
+
+	// Show yt-dlp browser/cookie settings only for video-url media type
+	if (currentMediaType === 'video-url') {
+		// Browser selection for yt-dlp
+		new Setting(containerEl)
+			.setName('Browser')
+			.setDesc('Browser to impersonate when extracting audio')
+			.addDropdown(dropdown => dropdown
+				.addOptions(BROWSER_OPTIONS)
+				.setValue(action.transcriptionContext?.impersonateBrowser ?? 'chrome')
+				.onChange(async (value) => {
+					if (!action.transcriptionContext) {
+						action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+					}
+					action.transcriptionContext.impersonateBrowser = value;
+					await plugin.saveSettings();
+				}));
+
+		// Use browser cookies toggle
+		new Setting(containerEl)
+			.setName('Use browser cookies')
+			.setDesc('Extract cookies from the selected browser for authentication (required for some age-restricted or private content)')
+			.addToggle(toggle => toggle
+				.setValue(action.transcriptionContext?.useBrowserCookies ?? false)
+				.onChange(async (value) => {
+					if (!action.transcriptionContext) {
+						action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+					}
+					action.transcriptionContext.useBrowserCookies = value;
+					await plugin.saveSettings();
+				}));
+	}
 
 	// Language setting (advanced)
 	const showAdvanced = callbacks.isAdvancedVisible();
@@ -620,6 +781,41 @@ function displayActionProviderSelection(
 						};
 					}
 				}
+				await plugin.saveSettings();
+			}));
+}
+
+/**
+ * Display HTTP request action settings
+ */
+function displayHttpRequestActionSettings(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	action: HttpRequestAction,
+	_callbacks: WorkflowSettingsCallbacks,
+	workflow: WorkflowConfig,
+	_preserveActionExpandState: () => void
+): void {
+	// Source token picker - uses same pattern as transcription action
+	const actionIndex = workflow.actions.findIndex(a => a.id === action.id);
+	const tokenGroups = getAvailableTokensForAction(workflow, actionIndex);
+
+	// Build dropdown options from available tokens
+	const tokenOptions: Record<string, string> = {};
+	for (const group of tokenGroups) {
+		for (const token of group.tokens) {
+			tokenOptions[token.name] = token.name;
+		}
+	}
+
+	new Setting(containerEl)
+		.setName('Source URL')
+		.setDesc('Select a token containing the URL to fetch')
+		.addDropdown(dropdown => dropdown
+			.addOptions(tokenOptions)
+			.setValue(action.sourceUrlToken ?? 'workflow.clipboard')
+			.onChange(async (value) => {
+				action.sourceUrlToken = value;
 				await plugin.saveSettings();
 			}));
 }
