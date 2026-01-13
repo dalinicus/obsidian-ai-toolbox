@@ -80,6 +80,15 @@ export const TRANSCRIPTION_WORKFLOW_TOKENS: TokenDefinition[] = [
 ];
 
 /**
+ * Token definitions for HTTP request workflows (ordered for template generation)
+ */
+export const HTTP_REQUEST_WORKFLOW_TOKENS: TokenDefinition[] = [
+	{ name: 'url', description: 'The URL that was requested' },
+	{ name: 'statusCode', description: 'The HTTP response status code' },
+	{ name: 'responseBody', description: 'The full response body as text' }
+];
+
+/**
  * Options for getting token definitions
  */
 export interface TokenDefinitionOptions {
@@ -104,6 +113,9 @@ export function getTokenDefinitionsForActionType(
 			);
 		}
 		return TRANSCRIPTION_WORKFLOW_TOKENS;
+	}
+	if (type === 'http-request') {
+		return HTTP_REQUEST_WORKFLOW_TOKENS;
 	}
 	return CHAT_WORKFLOW_TOKENS;
 }

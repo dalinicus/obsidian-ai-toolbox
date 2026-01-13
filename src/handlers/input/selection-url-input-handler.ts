@@ -5,6 +5,9 @@ import { extractAudioFromUrl } from '../../processing';
 /**
  * Input handler that extracts audio from a video URL in the current text selection.
  * Uses yt-dlp to download and convert the video to audio.
+ *
+ * Note: This is a legacy handler that uses default browser settings.
+ * For per-action browser/cookie settings, use TokenUrlInputHandler instead.
  */
 export class SelectionUrlInputHandler implements InputHandler {
     async getInput(context: InputContext): Promise<InputResult | null> {
@@ -27,7 +30,12 @@ export class SelectionUrlInputHandler implements InputHandler {
 
         new Notice('Processing URL from selection...');
 
-        const result = await extractAudioFromUrl(url, context.settings);
+        const defaultExtractionSettings = {
+            impersonateBrowser: 'chrome',
+            useBrowserCookies: false
+        };
+
+        const result = await extractAudioFromUrl(url, context.settings, defaultExtractionSettings);
 
         if (!result) {
             return null;

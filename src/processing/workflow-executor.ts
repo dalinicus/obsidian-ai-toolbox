@@ -76,13 +76,16 @@ function generateNoteTitle(result: ActionExecutionResult, workflowName: string):
 function getFinalOutputText(lastResult: ActionExecutionResult): string {
     if (lastResult.actionType === 'chat') {
         return lastResult.tokens['response'] || '';
-    } else {
+    } else if (lastResult.actionType === 'transcription') {
         // For transcription, prefer timestamped version if available
         const timestamped = lastResult.tokens['transcriptionWithTimestamps'];
         if (timestamped) {
             return timestamped;
         }
         return lastResult.tokens['transcription'] || '';
+    } else {
+        // For http-request, return the response body
+        return lastResult.tokens['responseBody'] || '';
     }
 }
 

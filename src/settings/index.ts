@@ -12,7 +12,8 @@ export {
 	DEFAULT_SETTINGS,
 	DEFAULT_WORKFLOW_CONFIG,
 	DEFAULT_CHAT_ACTION,
-	DEFAULT_TRANSCRIPTION_ACTION
+	DEFAULT_TRANSCRIPTION_ACTION,
+	DEFAULT_HTTP_REQUEST_ACTION
 } from "./types";
 export type {
 	AIProviderType,
@@ -32,6 +33,7 @@ export type {
 	BaseAction,
 	ChatAction,
 	TranscriptionAction,
+	HttpRequestAction,
 	WorkflowAction,
 	AIToolboxSettings,
 	SettingsTabType,
