@@ -1,4 +1,4 @@
-import { Setting } from "obsidian";
+import { Setting, Notice, setIcon } from "obsidian";
 import AIToolboxPlugin from "../main";
 import {
 	WorkflowConfig,
@@ -18,13 +18,15 @@ import {
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
+import { globalDeleteModeManager, nestedDeleteModeManager } from "../components/delete-mode-manager";
+import { createEntityListHeader } from "../components/entity-list-header";
+import { createMoveHandlers } from "../components/ordered-list-utils";
 import {
 	getAvailableTokensForAction,
 	TokenGroup,
 	TokenDefinition,
 	generateGroupTemplate
 } from "../tokens";
-import { setIcon, Notice } from "obsidian";
 
 /**
  * Callbacks for the workflows settings tab to communicate with the main settings tab
@@ -53,6 +55,9 @@ const PROMPT_SOURCE_OPTIONS: Record<PromptSourceType, string> = {
 	'from-file': 'From file'
 };
 
+// Key for workflow-level delete mode in the global manager
+const WORKFLOWS_DELETE_MODE_KEY = '__workflows__';
+
 /**
  * Display the workflows settings tab content
  */
@@ -61,37 +66,21 @@ export function displayWorkflowsSettings(
 	plugin: AIToolboxPlugin,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
-	// Add workflow button with delete mode toggle
-	const workflowsSetting = new Setting(containerEl)
-		.setName('Workflows')
-		.setDesc('Configure custom workflows with actions');
+	const isWorkflowDeleteMode = globalDeleteModeManager.get(WORKFLOWS_DELETE_MODE_KEY);
 
-	// Add workflow delete mode toggle
-	workflowsSetting.addToggle(toggle => {
-		toggle
-			.setValue(workflowDeleteMode)
-			.setTooltip(workflowDeleteMode ? 'Exit delete mode' : 'Enter delete mode')
-			.onChange(async (value) => {
-				workflowDeleteMode = value;
-				callbacks.refresh();
-			});
-
-		// Create a custom label with trash icon before the toggle
-		const toggleContainer = toggle.toggleEl.parentElement;
-		if (toggleContainer) {
-			const labelContainer = toggleContainer.createDiv({ cls: 'delete-mode-toggle-label' });
-			const iconSpan = labelContainer.createSpan({ cls: 'delete-mode-toggle-icon' });
-			setIcon(iconSpan, 'trash');
-			// Move the label before the toggle element
-			toggleContainer.insertBefore(labelContainer, toggle.toggleEl);
-		}
-	});
-
-	// Add workflow button
-	workflowsSetting.addButton(button => button
-		.setButtonText('Add workflow')
-		.setCta()
-		.onClick(async () => {
+	// Add workflow header with delete mode toggle and add button
+	createEntityListHeader({
+		containerEl,
+		label: 'Workflows',
+		description: 'Configure custom workflows with actions',
+		isDeleteMode: isWorkflowDeleteMode,
+		onDeleteModeChange: (value) => {
+			globalDeleteModeManager.set(WORKFLOWS_DELETE_MODE_KEY, value);
+			callbacks.refresh();
+		},
+		addButtonText: 'Add workflow',
+		addButtonCta: true,
+		onAdd: async () => {
 			const newWorkflow: WorkflowConfig = {
 				id: generateId(),
 				...DEFAULT_WORKFLOW_CONFIG,
@@ -101,16 +90,17 @@ export function displayWorkflowsSettings(
 			callbacks.setExpandState({ workflowId: newWorkflow.id });
 			await plugin.saveSettings();
 			callbacks.refresh();
-		}));
+		}
+	});
 
 	// Add horizontal rule separator
-	containerEl.createEl('hr', { cls: 'workflows-separator' });
+	containerEl.createEl('hr', { cls: 'entity-list-separator' });
 
 	// Display each workflow
 	for (let i = 0; i < plugin.settings.workflows.length; i++) {
 		const workflow = plugin.settings.workflows[i];
 		if (!workflow) continue;
-		displayWorkflowSettings(containerEl, plugin, workflow, i, callbacks, workflowDeleteMode);
+		displayWorkflowSettings(containerEl, plugin, workflow, i, callbacks, isWorkflowDeleteMode);
 	}
 }
 
@@ -142,6 +132,16 @@ function displayWorkflowSettings(
 
 	const showAdvanced = callbacks.isAdvancedVisible();
 
+	// Create move handlers using utility
+	const moveHandlers = createMoveHandlers({
+		items: plugin.settings.workflows,
+		index,
+		isDeleteMode: isWorkflowDeleteMode,
+		saveSettings: () => plugin.saveSettings(),
+		preserveExpandState: () => callbacks.setExpandState({ workflowId: workflow.id }),
+		refresh: callbacks.refresh
+	});
+
 	const { contentContainer, updateTitle, isExpanded } = createCollapsibleSection({
 		containerEl,
 		title: workflow.name || 'Unnamed workflow',
@@ -152,27 +152,8 @@ function displayWorkflowSettings(
 		isHeading: true,
 		icons,
 		secondaryText: showAdvanced ? workflow.id : undefined,
-		// Show move buttons only when NOT in delete mode
-		onMoveUp: !isWorkflowDeleteMode && index > 0 ? async () => {
-			const temp = plugin.settings.workflows[index - 1];
-			if (temp) {
-				plugin.settings.workflows[index - 1] = workflow;
-				plugin.settings.workflows[index] = temp;
-			}
-			await plugin.saveSettings();
-			callbacks.setExpandState({ workflowId: workflow.id });
-			callbacks.refresh();
-		} : undefined,
-		onMoveDown: !isWorkflowDeleteMode && index < plugin.settings.workflows.length - 1 ? async () => {
-			const temp = plugin.settings.workflows[index + 1];
-			if (temp) {
-				plugin.settings.workflows[index + 1] = workflow;
-				plugin.settings.workflows[index] = temp;
-			}
-			await plugin.saveSettings();
-			callbacks.setExpandState({ workflowId: workflow.id });
-			callbacks.refresh();
-		} : undefined,
+		onMoveUp: moveHandlers.onMoveUp,
+		onMoveDown: moveHandlers.onMoveDown,
 		// Show delete button only when in delete mode
 		onDelete: isWorkflowDeleteMode ? async () => {
 			plugin.settings.workflows.splice(index, 1);
@@ -256,12 +237,6 @@ const ACTION_TYPE_OPTIONS: Record<ActionType, string> = {
 	'transcription': 'Transcription'
 };
 
-// Track workflow-level delete mode state (for deleting workflows themselves)
-let workflowDeleteMode = false;
-
-// Map to track action delete mode state per workflow (workflow ID -> delete mode enabled)
-const actionDeleteModesMap = new Map<string, boolean>();
-
 /**
  * Display the actions section for a workflow
  */
@@ -274,69 +249,53 @@ function displayActionsSection(
 ): void {
 	const actionsContainer = containerEl.createDiv('actions-section');
 
-	// Get or initialize action delete mode state for this workflow
-	const isActionDeleteMode = actionDeleteModesMap.get(workflow.id) ?? false;
+	// Get action delete mode state for this workflow from the nested manager
+	const isActionDeleteMode = nestedDeleteModeManager.get(workflow.id);
 
-	// Add action button with delete mode toggle
-	const actionControlsSetting = new Setting(actionsContainer);
-
-	actionControlsSetting
-		.addToggle(toggle => {
-			toggle
-				.setValue(isActionDeleteMode)
-				.setTooltip(isActionDeleteMode ? 'Exit delete mode' : 'Enter delete mode')
-				.onChange(async (value) => {
-					actionDeleteModesMap.set(workflow.id, value);
-					if (isExpanded()) {
-						callbacks.setExpandState({ workflowId: workflow.id });
-					}
-					callbacks.refresh();
-				});
-
-			// Create a custom label with trash icon before the toggle
-			const toggleContainer = toggle.toggleEl.parentElement;
-			if (toggleContainer) {
-				const labelContainer = toggleContainer.createDiv({ cls: 'delete-mode-toggle-label' });
-				const iconSpan = labelContainer.createSpan({ cls: 'delete-mode-toggle-icon' });
-				setIcon(iconSpan, 'trash');
-				// Move the label before the toggle element
-				toggleContainer.insertBefore(labelContainer, toggle.toggleEl);
+	// Add action controls header with delete mode toggle and add dropdown
+	createEntityListHeader({
+		containerEl: actionsContainer,
+		label: 'Actions',
+		description: 'Execute actions sequentially. Tokens from previous actions are available to prompts and templates.',
+		isDeleteMode: isActionDeleteMode,
+		onDeleteModeChange: (value) => {
+			nestedDeleteModeManager.set(workflow.id, value);
+			if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
 			}
-		})
-		.addDropdown(dropdown => dropdown
-			.addOption('', 'Add action...')
-			.addOptions(ACTION_TYPE_OPTIONS)
-			.onChange(async (value) => {
-				if (!value) return;
+			callbacks.refresh();
+		},
+		addDropdownOptions: ACTION_TYPE_OPTIONS,
+		onDropdownSelect: async (value) => {
+			const actionType = value as ActionType;
+			let newAction: WorkflowAction;
 
-				const actionType = value as ActionType;
-				let newAction: WorkflowAction;
+			if (actionType === 'chat') {
+				newAction = {
+					...DEFAULT_CHAT_ACTION,
+					id: generateId(),
+					name: `Chat ${workflow.actions.length + 1}`,
+					contexts: []  // Create new array to avoid shared reference
+				};
+			} else {
+				newAction = {
+					...DEFAULT_TRANSCRIPTION_ACTION,
+					id: generateId(),
+					name: `Transcription ${workflow.actions.length + 1}`,
+					// Create new object to avoid shared reference
+					transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' }
+				};
+			}
 
-				if (actionType === 'chat') {
-					newAction = {
-						...DEFAULT_CHAT_ACTION,
-						id: generateId(),
-						name: `Chat ${workflow.actions.length + 1}`,
-						contexts: []  // Create new array to avoid shared reference
-					};
-				} else {
-					newAction = {
-						...DEFAULT_TRANSCRIPTION_ACTION,
-						id: generateId(),
-						name: `Transcription ${workflow.actions.length + 1}`,
-						// Create new object to avoid shared reference
-						transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' }
-					};
-				}
+			workflow.actions.push(newAction);
+			await plugin.saveSettings();
 
-				workflow.actions.push(newAction);
-				await plugin.saveSettings();
-
-				if (isExpanded()) {
-					callbacks.setExpandState({ workflowId: workflow.id });
-				}
-				callbacks.refresh();
-			}));
+			if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
+			}
+			callbacks.refresh();
+		}
+	});
 
 	// Display each action in a grouped list container
 	if (workflow.actions.length > 0) {
@@ -366,6 +325,28 @@ function displayActionSettings(
 	const expandState = callbacks.getExpandState();
 	const shouldExpandAction = expandState.workflowId === workflow.id && expandState.actionId === action.id;
 
+	// We need isActionExpanded before creating move handlers, so we track it via a ref
+	let actionExpandedRef = { current: shouldExpandAction };
+
+	// Helper to preserve action expand state on refresh
+	const preserveActionExpandState = () => {
+		if (isExpanded() && actionExpandedRef.current) {
+			callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
+		} else if (isExpanded()) {
+			callbacks.setExpandState({ workflowId: workflow.id });
+		}
+	};
+
+	// Create move handlers using utility
+	const moveHandlers = createMoveHandlers({
+		items: workflow.actions,
+		index,
+		isDeleteMode,
+		saveSettings: () => plugin.saveSettings(),
+		preserveExpandState: preserveActionExpandState,
+		refresh: callbacks.refresh
+	});
+
 	const { contentContainer, updateTitle, isExpanded: isActionExpanded } = createCollapsibleSection({
 		containerEl,
 		title: action.name || `Action ${index + 1}`,
@@ -375,35 +356,8 @@ function displayActionSettings(
 		startExpanded: shouldExpandAction,
 		isHeading: false,
 		icons: [actionIcon],
-		// Show move buttons only when NOT in delete mode
-		onMoveUp: !isDeleteMode && index > 0 ? async () => {
-			const temp = workflow.actions[index - 1];
-			if (temp) {
-				workflow.actions[index - 1] = action;
-				workflow.actions[index] = temp;
-			}
-			await plugin.saveSettings();
-			if (isExpanded() && isActionExpanded()) {
-				callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
-			} else if (isExpanded()) {
-				callbacks.setExpandState({ workflowId: workflow.id });
-			}
-			callbacks.refresh();
-		} : undefined,
-		onMoveDown: !isDeleteMode && index < workflow.actions.length - 1 ? async () => {
-			const temp = workflow.actions[index + 1];
-			if (temp) {
-				workflow.actions[index + 1] = action;
-				workflow.actions[index] = temp;
-			}
-			await plugin.saveSettings();
-			if (isExpanded() && isActionExpanded()) {
-				callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
-			} else if (isExpanded()) {
-				callbacks.setExpandState({ workflowId: workflow.id });
-			}
-			callbacks.refresh();
-		} : undefined,
+		onMoveUp: moveHandlers.onMoveUp,
+		onMoveDown: moveHandlers.onMoveDown,
 		// Show delete button only when in delete mode
 		onDelete: isDeleteMode ? async () => {
 			workflow.actions.splice(index, 1);
@@ -415,14 +369,8 @@ function displayActionSettings(
 		} : undefined,
 	});
 
-	// Helper to preserve action expand state on refresh
-	const preserveActionExpandState = () => {
-		if (isExpanded() && isActionExpanded()) {
-			callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
-		} else if (isExpanded()) {
-			callbacks.setExpandState({ workflowId: workflow.id });
-		}
-	};
+	// Update the ref to use the actual isExpanded function
+	actionExpandedRef = { get current() { return isActionExpanded(); } };
 
 	// Clear the action expand state after applying it
 	if (shouldExpandAction) {

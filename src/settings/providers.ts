@@ -11,6 +11,9 @@ import {
 import { createModelProvider, ModelProviderConfig } from "../providers";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createTestAudioBuffer } from "../processing/audio-processor";
+import { globalDeleteModeManager, nestedDeleteModeManager } from "../components/delete-mode-manager";
+import { createEntityListHeader } from "../components/entity-list-header";
+import { createMoveHandlers } from "../components/ordered-list-utils";
 
 /**
  * Callbacks for the provider settings tab to communicate with the main settings tab
@@ -151,6 +154,9 @@ async function testModel(provider: AIProviderConfig, model: AIModelConfig): Prom
 	}
 }
 
+// Key for provider-level delete mode in the global manager
+const PROVIDERS_DELETE_MODE_KEY = '__providers__';
+
 /**
  * Display the providers settings tab content
  */
@@ -159,30 +165,44 @@ export function displayProvidersSettings(
 	plugin: AIToolboxPlugin,
 	callbacks: ProviderSettingsCallbacks
 ): void {
-	// Add provider button
-	new Setting(containerEl)
-		.setName('AI providers')
-		.setDesc('Configure AI providers for transcription and other features')
-		.addButton(button => button
-			.setButtonText('Add provider')
-			.setCta()
-			.onClick(async () => {
-				const newProvider: AIProviderConfig = {
-					id: generateId(),
-					name: 'New provider',
-					type: 'azure-openai',
-					endpoint: '',
-					apiKey: '',
-					models: []
-				};
-				plugin.settings.providers.push(newProvider);
-				await plugin.saveSettings();
-				callbacks.refresh();
-			}));
+	const isProviderDeleteMode = globalDeleteModeManager.get(PROVIDERS_DELETE_MODE_KEY);
+
+	// Add provider header with delete mode toggle and add button
+	createEntityListHeader({
+		containerEl,
+		label: 'AI providers',
+		description: 'Configure AI providers for transcription and other features',
+		isDeleteMode: isProviderDeleteMode,
+		onDeleteModeChange: (value) => {
+			globalDeleteModeManager.set(PROVIDERS_DELETE_MODE_KEY, value);
+			callbacks.refresh();
+		},
+		addButtonText: 'Add provider',
+		addButtonCta: true,
+		onAdd: async () => {
+			const newProvider: AIProviderConfig = {
+				id: generateId(),
+				name: 'New provider',
+				type: 'azure-openai',
+				endpoint: '',
+				apiKey: '',
+				models: []
+			};
+			plugin.settings.providers.push(newProvider);
+			callbacks.setExpandState({ providerId: newProvider.id });
+			await plugin.saveSettings();
+			callbacks.refresh();
+		}
+	});
+
+	// Add horizontal rule separator
+	containerEl.createEl('hr', { cls: 'entity-list-separator' });
 
 	// Display each provider
-	for (const provider of plugin.settings.providers) {
-		displayProviderSettings(containerEl, plugin, provider, callbacks);
+	for (let i = 0; i < plugin.settings.providers.length; i++) {
+		const provider = plugin.settings.providers[i];
+		if (!provider) continue;
+		displayProviderSettings(containerEl, plugin, provider, i, callbacks, isProviderDeleteMode);
 	}
 }
 
@@ -190,12 +210,24 @@ function displayProviderSettings(
 	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
 	provider: AIProviderConfig,
-	callbacks: ProviderSettingsCallbacks
+	index: number,
+	callbacks: ProviderSettingsCallbacks,
+	isProviderDeleteMode: boolean
 ): void {
 	const expandState = callbacks.getExpandState();
 	const shouldExpand = expandState.providerId === provider.id;
 
-	const { contentContainer, updateTitle } = createCollapsibleSection({
+	// Create move handlers using utility
+	const moveHandlers = createMoveHandlers({
+		items: plugin.settings.providers,
+		index,
+		isDeleteMode: isProviderDeleteMode,
+		saveSettings: () => plugin.saveSettings(),
+		preserveExpandState: () => callbacks.setExpandState({ providerId: provider.id }),
+		refresh: callbacks.refresh
+	});
+
+	const { contentContainer, updateTitle, isExpanded } = createCollapsibleSection({
 		containerEl,
 		title: provider.name || 'Unnamed provider',
 		containerClass: 'provider-container',
@@ -203,14 +235,14 @@ function displayProviderSettings(
 		headerClass: 'provider-header',
 		startExpanded: shouldExpand,
 		isHeading: true,
-		onDelete: async () => {
-			const index = plugin.settings.providers.findIndex(p => p.id === provider.id);
-			if (index !== -1) {
-				plugin.settings.providers.splice(index, 1);
-				await plugin.saveSettings();
-				callbacks.refresh();
-			}
-		},
+		onMoveUp: moveHandlers.onMoveUp,
+		onMoveDown: moveHandlers.onMoveDown,
+		// Show delete button only when in delete mode
+		onDelete: isProviderDeleteMode ? async () => {
+			plugin.settings.providers.splice(index, 1);
+			await plugin.saveSettings();
+			callbacks.refresh();
+		} : undefined,
 	});
 
 	// Provider name
@@ -273,29 +305,43 @@ function displayProviderSettings(
 				await plugin.saveSettings();
 			}));
 
-	// Models section
-	new Setting(contentContainer)
-		.setName('Models')
-		.setDesc('Configure available models for this provider')
-		.addButton(button => button
-			.setButtonText('Add model')
-			.onClick(async () => {
-				const newModel: AIModelConfig = {
-					id: generateId(),
-					name: 'New model',
-					deploymentName: '',
-					modelId: ''
-				};
-				provider.models.push(newModel);
-				// Keep provider expanded and expand the new model
-				callbacks.setExpandState({ providerId: provider.id, modelId: newModel.id });
-				await plugin.saveSettings();
-				callbacks.refresh();
-			}));
+	// Get model delete mode state for this provider from the nested manager
+	const isModelDeleteMode = nestedDeleteModeManager.get(provider.id);
+
+	// Models section header with delete mode toggle and add button
+	createEntityListHeader({
+		containerEl: contentContainer,
+		label: 'Models',
+		description: 'Configure available models for this provider',
+		isDeleteMode: isModelDeleteMode,
+		onDeleteModeChange: (value) => {
+			nestedDeleteModeManager.set(provider.id, value);
+			if (isExpanded()) {
+				callbacks.setExpandState({ providerId: provider.id });
+			}
+			callbacks.refresh();
+		},
+		addButtonText: 'Add model',
+		onAdd: async () => {
+			const newModel: AIModelConfig = {
+				id: generateId(),
+				name: 'New model',
+				deploymentName: '',
+				modelId: ''
+			};
+			provider.models.push(newModel);
+			// Keep provider expanded and expand the new model
+			callbacks.setExpandState({ providerId: provider.id, modelId: newModel.id });
+			await plugin.saveSettings();
+			callbacks.refresh();
+		}
+	});
 
 	// Display models
-	for (const model of provider.models) {
-		displayModelSettings(contentContainer, plugin, provider, model, callbacks);
+	for (let i = 0; i < provider.models.length; i++) {
+		const model = provider.models[i];
+		if (!model) continue;
+		displayModelSettings(contentContainer, plugin, provider, model, i, callbacks, isExpanded, isModelDeleteMode);
 	}
 
 	// Clear the expand state after rendering all models for this provider
@@ -309,12 +355,37 @@ function displayModelSettings(
 	plugin: AIToolboxPlugin,
 	provider: AIProviderConfig,
 	model: AIModelConfig,
-	callbacks: ProviderSettingsCallbacks
+	index: number,
+	callbacks: ProviderSettingsCallbacks,
+	isProviderExpanded: () => boolean,
+	isModelDeleteMode: boolean
 ): void {
 	const expandState = callbacks.getExpandState();
 	const shouldExpand = expandState.modelId === model.id;
 
-	const { contentContainer, updateTitle } = createCollapsibleSection({
+	// We need isModelExpanded before creating move handlers, so we track it via a ref
+	let modelExpandedRef = { current: shouldExpand };
+
+	// Helper to preserve model expand state on refresh
+	const preserveModelExpandState = () => {
+		if (isProviderExpanded() && modelExpandedRef.current) {
+			callbacks.setExpandState({ providerId: provider.id, modelId: model.id });
+		} else if (isProviderExpanded()) {
+			callbacks.setExpandState({ providerId: provider.id });
+		}
+	};
+
+	// Create move handlers using utility
+	const moveHandlers = createMoveHandlers({
+		items: provider.models,
+		index,
+		isDeleteMode: isModelDeleteMode,
+		saveSettings: () => plugin.saveSettings(),
+		preserveExpandState: preserveModelExpandState,
+		refresh: callbacks.refresh
+	});
+
+	const { contentContainer, updateTitle, isExpanded: isModelExpanded } = createCollapsibleSection({
 		containerEl,
 		title: model.name || 'Unnamed model',
 		containerClass: 'model-container',
@@ -322,16 +393,21 @@ function displayModelSettings(
 		headerClass: 'model-header',
 		startExpanded: shouldExpand,
 		isHeading: false,
-		onDelete: async () => {
-			const index = provider.models.findIndex(m => m.id === model.id);
-			if (index !== -1) {
-				provider.models.splice(index, 1);
+		onMoveUp: moveHandlers.onMoveUp,
+		onMoveDown: moveHandlers.onMoveDown,
+		// Show delete button only when in delete mode
+		onDelete: isModelDeleteMode ? async () => {
+			provider.models.splice(index, 1);
+			await plugin.saveSettings();
+			if (isProviderExpanded()) {
 				callbacks.setExpandState({ providerId: provider.id });
-				await plugin.saveSettings();
-				callbacks.refresh();
 			}
-		},
+			callbacks.refresh();
+		} : undefined,
 	});
+
+	// Update the ref to use the actual isExpanded function
+	modelExpandedRef = { get current() { return isModelExpanded(); } };
 
 	// Model name
 	new Setting(contentContainer)

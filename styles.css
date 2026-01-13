@@ -73,57 +73,81 @@ If your plugin does not need CSS, delete this file.
 	display: block;
 }
 
-/* Provider container styles */
-.provider-container {
-	margin-bottom: 16px;
+/* ==================== Collapsible Entity Container System ==================== */
+/*
+ * Shared styles for collapsible entity containers used throughout the plugin.
+ * Entity types: providers, models, workflows, actions
+ * Each entity has: container, header, and content
+ */
+
+/* Base collapsible header styles - shared by all entity types */
+.provider-header,
+.model-header,
+.workflow-header,
+.action-header {
+	cursor: pointer;
+	user-select: none;
+}
+
+.provider-header:hover .setting-item-name,
+.model-header:hover .setting-item-name,
+.workflow-header:hover .setting-item-name,
+.action-header:hover .setting-item-name {
+	color: var(--text-accent);
+}
+
+/* Base collapsible content states - shared by all entity types */
+.provider-content.is-collapsed,
+.model-content.is-collapsed,
+.workflow-content.is-collapsed,
+.action-content.is-collapsed {
+	display: none;
+}
+
+.provider-content.is-expanded,
+.model-content.is-expanded,
+.workflow-content.is-expanded,
+.action-content.is-expanded {
+	display: block;
+}
+
+/* Top-level entity containers (providers, workflows) */
+.provider-container,
+.workflow-container {
+	margin-bottom: 12px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	padding: 8px;
 }
 
-.provider-header {
-	cursor: pointer;
-	user-select: none;
-}
-
-.provider-header:hover .setting-item-name {
-	color: var(--text-accent);
-}
-
-.provider-content.is-collapsed {
-	display: none;
-}
-
-.provider-content.is-expanded {
-	display: block;
+.provider-content.is-expanded,
+.workflow-content.is-expanded {
 	padding-top: 8px;
 }
 
-/* Model container styles */
-.model-container {
-	margin-left: 16px;
+/* Nested entity containers (models, actions) */
+.model-container,
+.action-container {
 	margin-bottom: 8px;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 6px;
 	padding: 8px;
+	background: var(--background-secondary);
 }
 
-.model-header {
-	cursor: pointer;
-	user-select: none;
-}
-
-.model-header:hover .setting-item-name {
-	color: var(--text-accent);
-}
-
-.model-content.is-collapsed {
-	display: none;
-}
-
-.model-content.is-expanded {
-	display: block;
+.model-content.is-expanded,
+.action-content.is-expanded {
 	padding-top: 8px;
+}
+
+/* Provider-specific adjustments */
+.provider-header {
+	padding: 2px 4px;
+}
+
+/* Model-specific adjustments - nested under providers */
+.model-container {
+	margin-left: 16px;
 }
 
 /* Model capabilities section */
@@ -159,8 +183,13 @@ If your plugin does not need CSS, delete this file.
 	height: 16px;
 }
 
-/* Workflow separator */
-.workflows-separator {
+/* Workflow-specific adjustments */
+.workflow-header {
+	padding: 2px 4px;
+}
+
+/* Entity list separator (used below main headers like Workflows, AI Providers) */
+.entity-list-separator {
 	margin: 0px 0 12px 0;
 	border: none;
 	border-top: 1px solid var(--background-modifier-border);
@@ -173,81 +202,46 @@ If your plugin does not need CSS, delete this file.
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-/* Workflow container styles */
-.workflow-container {
-	margin-bottom: 8px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 6px;
-	padding: 6px;
+/* Action-specific adjustments */
+.action-header {
+	background: transparent;
+	border-radius: 4px;
+	padding: 4px 8px;
 }
 
-
-.workflow-header {
-	cursor: pointer;
-	user-select: none;
-	padding: 2px 4px;
+.action-content.is-expanded {
+	padding-left: 12px;
+	padding-right: 8px;
 }
 
-.workflow-header:hover .setting-item-name {
-	color: var(--text-accent);
-}
+/* ==================== Entity List Sections ==================== */
+/* Used for nested entity lists (actions within workflows, models within providers) */
 
-.workflow-content.is-collapsed {
-	display: none;
-}
-
-.workflow-content.is-expanded {
-	display: block;
-	padding-top: 6px;
-}
-
-/* Actions section container - integrates with workflow container */
-.actions-section {
+.actions-section,
+.models-section {
 	margin-top: 12px;
 	margin-bottom: 12px;
 }
 
-.actions-section-title {
+.actions-section-title,
+.models-section-title {
 	font-size: 14px;
 	font-weight: 600;
 	color: var(--text-muted);
 	margin-bottom: 8px;
 }
 
-/* Actions list wrapper - transparent container with vertical spacing */
-.actions-list {
+/* Entity list wrappers - vertical spacing between items */
+.actions-list,
+.models-list {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 }
 
-/* Action container styles - individual card-like sections */
-.action-container {
-	background: var(--background-secondary);
-	border-radius: 6px;
-	border: 1px solid var(--background-modifier-border);
-	padding: 8px;
-}
+/* ==================== Delete Mode Toggle Styles ==================== */
+/* Shared styles for the delete mode toggle used in entity list headers */
 
-.action-header {
-	cursor: pointer;
-	background: transparent;
-	border-radius: 4px;
-	padding: 4px 8px;
-}
-
-.action-content.is-collapsed {
-	display: none;
-}
-
-.action-content.is-expanded {
-	display: block;
-	padding-top: 8px;
-	padding-left: 12px;
-	padding-right: 8px;
-}
-
-/* Delete mode toggle styles */
 .delete-mode-toggle-label {
 	display: inline-flex;
 	align-items: center;
@@ -266,16 +260,47 @@ If your plugin does not need CSS, delete this file.
 	color: var(--text-muted);
 }
 
-/* Red delete button when in delete mode */
-.action-header button[aria-label="Delete"],
-.workflow-header button[aria-label="Delete"] {
+/* ==================== Collapsible Header Button Styles ==================== */
+/* Shared styles for move up/down and delete buttons in entity headers */
+
+/* Delete button - red styling when visible (in delete mode) */
+.provider-header button[aria-label="Delete"],
+.model-header button[aria-label="Delete"],
+.workflow-header button[aria-label="Delete"],
+.action-header button[aria-label="Delete"] {
 	color: var(--color-red);
 }
 
-.action-header button[aria-label="Delete"]:hover,
-.workflow-header button[aria-label="Delete"]:hover {
+.provider-header button[aria-label="Delete"]:hover,
+.model-header button[aria-label="Delete"]:hover,
+.workflow-header button[aria-label="Delete"]:hover,
+.action-header button[aria-label="Delete"]:hover {
 	background: var(--color-red);
 	color: var(--text-on-accent);
+}
+
+/* Move up/down buttons - subtle styling */
+.provider-header button[aria-label="Move up"],
+.provider-header button[aria-label="Move down"],
+.model-header button[aria-label="Move up"],
+.model-header button[aria-label="Move down"],
+.workflow-header button[aria-label="Move up"],
+.workflow-header button[aria-label="Move down"],
+.action-header button[aria-label="Move up"],
+.action-header button[aria-label="Move down"] {
+	color: var(--text-muted);
+}
+
+.provider-header button[aria-label="Move up"]:hover,
+.provider-header button[aria-label="Move down"]:hover,
+.model-header button[aria-label="Move up"]:hover,
+.model-header button[aria-label="Move down"]:hover,
+.workflow-header button[aria-label="Move up"]:hover,
+.workflow-header button[aria-label="Move down"]:hover,
+.action-header button[aria-label="Move up"]:hover,
+.action-header button[aria-label="Move down"]:hover {
+	color: var(--text-accent);
+	background: var(--background-modifier-hover);
 }
 
 .workflow-textarea {
