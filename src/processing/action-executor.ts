@@ -1,5 +1,5 @@
-import { App, TFile } from 'obsidian';
-import { AIToolboxSettings, ChatAction, TranscriptionAction, WorkflowAction } from '../settings';
+import { App, TFile, requestUrl } from 'obsidian';
+import { AIToolboxSettings, ChatAction, TranscriptionAction, HttpRequestAction, WorkflowAction } from '../settings';
 import { createActionProvider, ChatMessage, TranscriptionOptions } from '../providers';
 import {
     InputContext,
@@ -9,6 +9,7 @@ import {
 import {
     createChatWorkflowTokens,
     createTranscriptionWorkflowTokens,
+    createHttpRequestWorkflowTokens,
     ContextTokenValues,
     replaceWorkflowContextTokens
 } from './workflow-chaining';
@@ -21,7 +22,7 @@ export interface ActionExecutionResult {
     /** The action that was executed */
     actionId: string;
     /** The action type */
-    actionType: 'chat' | 'transcription';
+    actionType: 'chat' | 'transcription' | 'http-request';
     /** Whether execution succeeded */
     success: boolean;
     /** Error message if failed */
@@ -256,7 +257,13 @@ export async function executeTranscriptionAction(
         return { ...baseResult, error: `No URL found in token {{${sourceUrlToken}}}` };
     }
 
-    const inputHandler = new TokenUrlInputHandler(sourceUrl);
+    // Get per-action browser/cookie settings (required, with defaults)
+    const extractionSettings = {
+        impersonateBrowser: action.transcriptionContext?.impersonateBrowser ?? 'chrome',
+        useBrowserCookies: action.transcriptionContext?.useBrowserCookies ?? false
+    };
+
+    const inputHandler = new TokenUrlInputHandler(sourceUrl, extractionSettings);
 
     // Create a minimal workflow-like object for InputContext compatibility
     const inputContext: InputContext = {
@@ -311,6 +318,49 @@ export async function executeTranscriptionAction(
 }
 
 /**
+ * Execute an HTTP request action and return the result.
+ */
+export async function executeHttpRequestAction(
+    action: HttpRequestAction,
+    context: ActionExecutionContext
+): Promise<ActionExecutionResult> {
+    const baseResult: ActionExecutionResult = {
+        actionId: action.id,
+        actionType: 'http-request',
+        success: false,
+        tokens: {}
+    };
+
+    // Resolve the URL from the configured token
+    const sourceUrlToken = action.sourceUrlToken ?? 'workflow.clipboard';
+    const url = resolveTokenValue(sourceUrlToken, context);
+
+    if (!url || !url.trim()) {
+        return { ...baseResult, error: `No URL found in token {{${sourceUrlToken}}}` };
+    }
+
+    try {
+        logDebug(LogCategory.WORKFLOW, `Executing HTTP request action: ${action.name} -> ${url}`);
+
+        const response = await requestUrl({
+            url: url.trim(),
+            method: 'GET'
+        });
+
+        logInfo(LogCategory.WORKFLOW, `HTTP request completed: ${action.name} (status: ${response.status})`);
+
+        return {
+            ...baseResult,
+            success: true,
+            tokens: createHttpRequestWorkflowTokens(url.trim(), response.status, response.text)
+        };
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return { ...baseResult, error: errorMessage };
+    }
+}
+
+/**
  * Execute any action type and return the result.
  */
 export async function executeAction(
@@ -319,8 +369,10 @@ export async function executeAction(
 ): Promise<ActionExecutionResult> {
     if (action.type === 'chat') {
         return executeChatAction(action, context);
-    } else {
+    } else if (action.type === 'transcription') {
         return executeTranscriptionAction(action, context);
+    } else {
+        return executeHttpRequestAction(action, context);
     }
 }
 

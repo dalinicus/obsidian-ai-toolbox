@@ -153,10 +153,11 @@ export default class AIToolboxPlugin extends Plugin {
 	 */
 	private unregisterWorkflowCommand(commandId: string): void {
 		// Access the internal commands API to remove commands
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 		const commands = (this.app as any).commands;
 		if (commands && typeof commands.removeCommand === 'function') {
 			commands.removeCommand(`${this.manifest.id}:${commandId}`);
 		}
+		/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call */
 	}
 }

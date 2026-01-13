@@ -6,6 +6,7 @@ import {
 	WorkflowAction,
 	ChatAction,
 	TranscriptionAction,
+	HttpRequestAction,
 	ActionType,
 	PromptSourceType,
 	TranscriptionMediaType,
@@ -14,7 +15,8 @@ import {
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG,
 	DEFAULT_CHAT_ACTION,
-	DEFAULT_TRANSCRIPTION_ACTION
+	DEFAULT_TRANSCRIPTION_ACTION,
+	DEFAULT_HTTP_REQUEST_ACTION
 } from "./types";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
@@ -129,6 +131,9 @@ function displayWorkflowSettings(
 	if (actionTypes.has('transcription')) {
 		icons.push('audio-lines');
 	}
+	if (actionTypes.has('http-request')) {
+		icons.push('globe');
+	}
 
 	const showAdvanced = callbacks.isAdvancedVisible();
 
@@ -234,7 +239,8 @@ function displayWorkflowSettings(
  */
 const ACTION_TYPE_OPTIONS: Record<ActionType, string> = {
 	'chat': 'Chat',
-	'transcription': 'Transcription'
+	'transcription': 'Transcription',
+	'http-request': 'HTTP request'
 };
 
 /**
@@ -277,13 +283,24 @@ function displayActionsSection(
 					name: `Chat ${workflow.actions.length + 1}`,
 					contexts: []  // Create new array to avoid shared reference
 				};
-			} else {
+			} else if (actionType === 'transcription') {
 				newAction = {
 					...DEFAULT_TRANSCRIPTION_ACTION,
 					id: generateId(),
 					name: `Transcription ${workflow.actions.length + 1}`,
 					// Create new object to avoid shared reference
-					transcriptionContext: { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' }
+					transcriptionContext: {
+						mediaType: 'video-url',
+						sourceUrlToken: 'workflow.clipboard',
+						impersonateBrowser: 'chrome',
+						useBrowserCookies: false
+					}
+				};
+			} else {
+				newAction = {
+					...DEFAULT_HTTP_REQUEST_ACTION,
+					id: generateId(),
+					name: `HTTP request ${workflow.actions.length + 1}`
 				};
 			}
 
@@ -321,7 +338,12 @@ function displayActionSettings(
 	isExpanded: () => boolean,
 	isDeleteMode: boolean
 ): void {
-	const actionIcon = action.type === 'transcription' ? 'audio-lines' : 'message-circle';
+	let actionIcon = 'message-circle';
+	if (action.type === 'transcription') {
+		actionIcon = 'audio-lines';
+	} else if (action.type === 'http-request') {
+		actionIcon = 'globe';
+	}
 	const expandState = callbacks.getExpandState();
 	const shouldExpandAction = expandState.workflowId === workflow.id && expandState.actionId === action.id;
 
@@ -397,8 +419,10 @@ function displayActionSettings(
 	// Route to type-specific settings
 	if (action.type === 'transcription') {
 		displayTranscriptionActionSettings(contentContainer, plugin, action, callbacks, workflow, preserveActionExpandState);
-	} else {
+	} else if (action.type === 'chat') {
 		displayChatActionSettings(contentContainer, plugin, action, callbacks, preserveActionExpandState);
+	} else {
+		displayHttpRequestActionSettings(contentContainer, plugin, action, callbacks, workflow, preserveActionExpandState);
 	}
 }
 
@@ -553,6 +577,20 @@ function displayChatActionSettings(
 }
 
 /**
+ * Browser options for yt-dlp
+ */
+const BROWSER_OPTIONS: Record<string, string> = {
+	'chrome': 'Chrome',
+	'edge': 'Edge',
+	'safari': 'Safari',
+	'firefox': 'Firefox',
+	'brave': 'Brave',
+	'chromium': 'Chromium',
+	'opera': 'Opera',
+	'vivaldi': 'Vivaldi'
+};
+
+/**
  * Display transcription action settings
  */
 function displayTranscriptionActionSettings(
@@ -568,29 +606,32 @@ function displayTranscriptionActionSettings(
 
 	// Ensure transcriptionContext exists
 	if (!action.transcriptionContext) {
-		action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
+		action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
 	}
 
 	// Media type dropdown
 	const mediaTypeOptions: Record<TranscriptionMediaType, string> = {
-		'video': 'Video',
-		'audio': 'Audio'
+		'video-url': 'Video URL',
+		'audio-file': 'Audio file'
 	};
+	const currentMediaType = action.transcriptionContext.mediaType;
 	new Setting(containerEl)
 		.setName('Media type')
 		.setDesc('The type of media to transcribe')
 		.addDropdown(dropdown => dropdown
 			.addOptions(mediaTypeOptions)
-			.setValue(action.transcriptionContext?.mediaType ?? 'video')
+			.setValue(currentMediaType ?? 'video-url')
 			.onChange(async (value) => {
 				if (!action.transcriptionContext) {
-					action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
+					action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
 				}
 				action.transcriptionContext.mediaType = value as TranscriptionMediaType;
 				await plugin.saveSettings();
+				preserveActionExpandState();
+				callbacks.refresh();
 			}));
 
-	// Source URL token picker
+	// Source token picker - label changes based on media type
 	const actionIndex = workflow.actions.findIndex(a => a.id === action.id);
 	const tokenGroups = getAvailableTokensForAction(workflow, actionIndex);
 
@@ -602,19 +643,56 @@ function displayTranscriptionActionSettings(
 		}
 	}
 
+	const sourceLabel = currentMediaType === 'audio-file' ? 'File path source' : 'Source URL';
+	const sourceDesc = currentMediaType === 'audio-file'
+		? 'Select a token containing the audio file path'
+		: 'Select a token containing the video URL';
+
 	new Setting(containerEl)
-		.setName('Source URL')
-		.setDesc('Select a token containing the video/audio URL')
+		.setName(sourceLabel)
+		.setDesc(sourceDesc)
 		.addDropdown(dropdown => dropdown
 			.addOptions(tokenOptions)
 			.setValue(action.transcriptionContext?.sourceUrlToken ?? 'workflow.clipboard')
 			.onChange(async (value) => {
 				if (!action.transcriptionContext) {
-					action.transcriptionContext = { mediaType: 'video', sourceUrlToken: 'workflow.clipboard' };
+					action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
 				}
 				action.transcriptionContext.sourceUrlToken = value;
 				await plugin.saveSettings();
 			}));
+
+	// Show yt-dlp browser/cookie settings only for video-url media type
+	if (currentMediaType === 'video-url') {
+		// Browser selection for yt-dlp
+		new Setting(containerEl)
+			.setName('Browser')
+			.setDesc('Browser to impersonate when extracting audio')
+			.addDropdown(dropdown => dropdown
+				.addOptions(BROWSER_OPTIONS)
+				.setValue(action.transcriptionContext?.impersonateBrowser ?? 'chrome')
+				.onChange(async (value) => {
+					if (!action.transcriptionContext) {
+						action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+					}
+					action.transcriptionContext.impersonateBrowser = value;
+					await plugin.saveSettings();
+				}));
+
+		// Use browser cookies toggle
+		new Setting(containerEl)
+			.setName('Use browser cookies')
+			.setDesc('Extract cookies from the selected browser for authentication (required for some age-restricted or private content)')
+			.addToggle(toggle => toggle
+				.setValue(action.transcriptionContext?.useBrowserCookies ?? false)
+				.onChange(async (value) => {
+					if (!action.transcriptionContext) {
+						action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+					}
+					action.transcriptionContext.useBrowserCookies = value;
+					await plugin.saveSettings();
+				}));
+	}
 
 	// Language setting (advanced)
 	const showAdvanced = callbacks.isAdvancedVisible();
@@ -703,6 +781,41 @@ function displayActionProviderSelection(
 						};
 					}
 				}
+				await plugin.saveSettings();
+			}));
+}
+
+/**
+ * Display HTTP request action settings
+ */
+function displayHttpRequestActionSettings(
+	containerEl: HTMLElement,
+	plugin: AIToolboxPlugin,
+	action: HttpRequestAction,
+	_callbacks: WorkflowSettingsCallbacks,
+	workflow: WorkflowConfig,
+	_preserveActionExpandState: () => void
+): void {
+	// Source token picker - uses same pattern as transcription action
+	const actionIndex = workflow.actions.findIndex(a => a.id === action.id);
+	const tokenGroups = getAvailableTokensForAction(workflow, actionIndex);
+
+	// Build dropdown options from available tokens
+	const tokenOptions: Record<string, string> = {};
+	for (const group of tokenGroups) {
+		for (const token of group.tokens) {
+			tokenOptions[token.name] = token.name;
+		}
+	}
+
+	new Setting(containerEl)
+		.setName('Source URL')
+		.setDesc('Select a token containing the URL to fetch')
+		.addDropdown(dropdown => dropdown
+			.addOptions(tokenOptions)
+			.setValue(action.sourceUrlToken ?? 'workflow.clipboard')
+			.onChange(async (value) => {
+				action.sourceUrlToken = value;
 				await plugin.saveSettings();
 			}));
 }

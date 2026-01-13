@@ -9,7 +9,7 @@ export interface WorkflowExecutionResult {
     /** The workflow that was executed */
     workflowId: string;
     /** The workflow type */
-    workflowType: 'chat' | 'transcription';
+    workflowType: 'chat' | 'transcription' | 'http-request';
     /** Whether execution succeeded */
     success: boolean;
     /** Error message if failed */
@@ -148,6 +148,21 @@ export function createTranscriptionWorkflowTokens(
     }
 
     return tokens;
+}
+
+/**
+ * Create HTTP request workflow tokens from execution data
+ */
+export function createHttpRequestWorkflowTokens(
+    url: string,
+    statusCode: number,
+    responseBody: string
+): Record<string, string> {
+    return {
+        url,
+        statusCode: String(statusCode),
+        responseBody
+    };
 }
 
 /**
