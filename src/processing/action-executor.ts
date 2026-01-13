@@ -267,7 +267,8 @@ export async function executeTranscriptionAction(
             name: action.name,
             actions: [],
             outputType: 'popup',
-            outputFolder: ''
+            outputFolder: '',
+            showInCommandPalette: false
         }
     };
 

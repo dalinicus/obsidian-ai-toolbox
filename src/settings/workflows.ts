@@ -61,28 +61,56 @@ export function displayWorkflowsSettings(
 	plugin: AIToolboxPlugin,
 	callbacks: WorkflowSettingsCallbacks
 ): void {
-	// Add workflow button
-	new Setting(containerEl)
+	// Add workflow button with delete mode toggle
+	const workflowsSetting = new Setting(containerEl)
 		.setName('Workflows')
-		.setDesc('Configure custom workflows with actions')
-		.addButton(button => button
-			.setButtonText('Add workflow')
-			.setCta()
-			.onClick(async () => {
-				const newWorkflow: WorkflowConfig = {
-					id: generateId(),
-					...DEFAULT_WORKFLOW_CONFIG,
-					actions: []  // Create new array to avoid shared reference
-				};
-				plugin.settings.workflows.push(newWorkflow);
-				callbacks.setExpandState({ workflowId: newWorkflow.id });
-				await plugin.saveSettings();
+		.setDesc('Configure custom workflows with actions');
+
+	// Add workflow delete mode toggle
+	workflowsSetting.addToggle(toggle => {
+		toggle
+			.setValue(workflowDeleteMode)
+			.setTooltip(workflowDeleteMode ? 'Exit delete mode' : 'Enter delete mode')
+			.onChange(async (value) => {
+				workflowDeleteMode = value;
 				callbacks.refresh();
-			}));
+			});
+
+		// Create a custom label with trash icon before the toggle
+		const toggleContainer = toggle.toggleEl.parentElement;
+		if (toggleContainer) {
+			const labelContainer = toggleContainer.createDiv({ cls: 'delete-mode-toggle-label' });
+			const iconSpan = labelContainer.createSpan({ cls: 'delete-mode-toggle-icon' });
+			setIcon(iconSpan, 'trash');
+			// Move the label before the toggle element
+			toggleContainer.insertBefore(labelContainer, toggle.toggleEl);
+		}
+	});
+
+	// Add workflow button
+	workflowsSetting.addButton(button => button
+		.setButtonText('Add workflow')
+		.setCta()
+		.onClick(async () => {
+			const newWorkflow: WorkflowConfig = {
+				id: generateId(),
+				...DEFAULT_WORKFLOW_CONFIG,
+				actions: []  // Create new array to avoid shared reference
+			};
+			plugin.settings.workflows.push(newWorkflow);
+			callbacks.setExpandState({ workflowId: newWorkflow.id });
+			await plugin.saveSettings();
+			callbacks.refresh();
+		}));
+
+	// Add horizontal rule separator
+	containerEl.createEl('hr', { cls: 'workflows-separator' });
 
 	// Display each workflow
-	for (const workflow of plugin.settings.workflows) {
-		displayWorkflowSettings(containerEl, plugin, workflow, callbacks);
+	for (let i = 0; i < plugin.settings.workflows.length; i++) {
+		const workflow = plugin.settings.workflows[i];
+		if (!workflow) continue;
+		displayWorkflowSettings(containerEl, plugin, workflow, i, callbacks, workflowDeleteMode);
 	}
 }
 
@@ -90,7 +118,9 @@ function displayWorkflowSettings(
 	containerEl: HTMLElement,
 	plugin: AIToolboxPlugin,
 	workflow: WorkflowConfig,
-	callbacks: WorkflowSettingsCallbacks
+	index: number,
+	callbacks: WorkflowSettingsCallbacks,
+	isWorkflowDeleteMode: boolean
 ): void {
 	const expandState = callbacks.getExpandState();
 	const shouldExpand = expandState.workflowId === workflow.id;
@@ -100,9 +130,15 @@ function displayWorkflowSettings(
 		workflow.actions = [];
 	}
 
-	// Determine icon based on first action type (or default)
-	const firstAction = workflow.actions[0];
-	const icon = firstAction?.type === 'transcription' ? 'audio-lines' : 'message-circle';
+	// Determine icons based on all action types present in the workflow
+	const actionTypes = new Set(workflow.actions.map(a => a.type));
+	const icons: string[] = [];
+	if (actionTypes.has('chat')) {
+		icons.push('message-circle');
+	}
+	if (actionTypes.has('transcription')) {
+		icons.push('audio-lines');
+	}
 
 	const showAdvanced = callbacks.isAdvancedVisible();
 
@@ -114,16 +150,35 @@ function displayWorkflowSettings(
 		headerClass: 'workflow-header',
 		startExpanded: shouldExpand,
 		isHeading: true,
-		icon,
+		icons,
 		secondaryText: showAdvanced ? workflow.id : undefined,
-		onDelete: async () => {
-			const index = plugin.settings.workflows.findIndex(w => w.id === workflow.id);
-			if (index !== -1) {
-				plugin.settings.workflows.splice(index, 1);
-				await plugin.saveSettings();
-				callbacks.refresh();
+		// Show move buttons only when NOT in delete mode
+		onMoveUp: !isWorkflowDeleteMode && index > 0 ? async () => {
+			const temp = plugin.settings.workflows[index - 1];
+			if (temp) {
+				plugin.settings.workflows[index - 1] = workflow;
+				plugin.settings.workflows[index] = temp;
 			}
-		},
+			await plugin.saveSettings();
+			callbacks.setExpandState({ workflowId: workflow.id });
+			callbacks.refresh();
+		} : undefined,
+		onMoveDown: !isWorkflowDeleteMode && index < plugin.settings.workflows.length - 1 ? async () => {
+			const temp = plugin.settings.workflows[index + 1];
+			if (temp) {
+				plugin.settings.workflows[index + 1] = workflow;
+				plugin.settings.workflows[index] = temp;
+			}
+			await plugin.saveSettings();
+			callbacks.setExpandState({ workflowId: workflow.id });
+			callbacks.refresh();
+		} : undefined,
+		// Show delete button only when in delete mode
+		onDelete: isWorkflowDeleteMode ? async () => {
+			plugin.settings.workflows.splice(index, 1);
+			await plugin.saveSettings();
+			callbacks.refresh();
+		} : undefined,
 	});
 
 	// Workflow name
@@ -138,8 +193,22 @@ function displayWorkflowSettings(
 				await plugin.saveSettings();
 			}));
 
+	// Add separator between workflow name and actions
+	contentContainer.createEl('hr', { cls: 'workflow-actions-separator' });
+
 	// Actions section
 	displayActionsSection(contentContainer, plugin, workflow, callbacks, isExpanded);
+
+	// Show in command palette toggle
+	new Setting(contentContainer)
+		.setName('Show in command palette')
+		.setDesc('Register this workflow as a command in Obsidian\'s command palette')
+		.addToggle(toggle => toggle
+			.setValue(workflow.showInCommandPalette ?? false)
+			.onChange(async (value) => {
+				workflow.showInCommandPalette = value;
+				await plugin.saveSettings();
+			}));
 
 	// Output type
 	new Setting(contentContainer)
@@ -187,6 +256,12 @@ const ACTION_TYPE_OPTIONS: Record<ActionType, string> = {
 	'transcription': 'Transcription'
 };
 
+// Track workflow-level delete mode state (for deleting workflows themselves)
+let workflowDeleteMode = false;
+
+// Map to track action delete mode state per workflow (workflow ID -> delete mode enabled)
+const actionDeleteModesMap = new Map<string, boolean>();
+
 /**
  * Display the actions section for a workflow
  */
@@ -198,10 +273,36 @@ function displayActionsSection(
 	isExpanded: () => boolean
 ): void {
 	const actionsContainer = containerEl.createDiv('actions-section');
-	actionsContainer.createDiv({ text: 'Actions', cls: 'actions-section-title' });
 
-	// Add action button
-	new Setting(actionsContainer)
+	// Get or initialize action delete mode state for this workflow
+	const isActionDeleteMode = actionDeleteModesMap.get(workflow.id) ?? false;
+
+	// Add action button with delete mode toggle
+	const actionControlsSetting = new Setting(actionsContainer);
+
+	actionControlsSetting
+		.addToggle(toggle => {
+			toggle
+				.setValue(isActionDeleteMode)
+				.setTooltip(isActionDeleteMode ? 'Exit delete mode' : 'Enter delete mode')
+				.onChange(async (value) => {
+					actionDeleteModesMap.set(workflow.id, value);
+					if (isExpanded()) {
+						callbacks.setExpandState({ workflowId: workflow.id });
+					}
+					callbacks.refresh();
+				});
+
+			// Create a custom label with trash icon before the toggle
+			const toggleContainer = toggle.toggleEl.parentElement;
+			if (toggleContainer) {
+				const labelContainer = toggleContainer.createDiv({ cls: 'delete-mode-toggle-label' });
+				const iconSpan = labelContainer.createSpan({ cls: 'delete-mode-toggle-icon' });
+				setIcon(iconSpan, 'trash');
+				// Move the label before the toggle element
+				toggleContainer.insertBefore(labelContainer, toggle.toggleEl);
+			}
+		})
 		.addDropdown(dropdown => dropdown
 			.addOption('', 'Add action...')
 			.addOptions(ACTION_TYPE_OPTIONS)
@@ -237,11 +338,14 @@ function displayActionsSection(
 				callbacks.refresh();
 			}));
 
-	// Display each action
-	for (let i = 0; i < workflow.actions.length; i++) {
-		const action = workflow.actions[i];
-		if (!action) continue;
-		displayActionSettings(actionsContainer, plugin, workflow, action, i, callbacks, isExpanded);
+	// Display each action in a grouped list container
+	if (workflow.actions.length > 0) {
+		const actionsList = actionsContainer.createDiv('actions-list');
+		for (let i = 0; i < workflow.actions.length; i++) {
+			const action = workflow.actions[i];
+			if (!action) continue;
+			displayActionSettings(actionsList, plugin, workflow, action, i, callbacks, isExpanded, isActionDeleteMode);
+		}
 	}
 }
 
@@ -255,7 +359,8 @@ function displayActionSettings(
 	action: WorkflowAction,
 	index: number,
 	callbacks: WorkflowSettingsCallbacks,
-	isExpanded: () => boolean
+	isExpanded: () => boolean,
+	isDeleteMode: boolean
 ): void {
 	const actionIcon = action.type === 'transcription' ? 'audio-lines' : 'message-circle';
 	const expandState = callbacks.getExpandState();
@@ -269,15 +374,45 @@ function displayActionSettings(
 		headerClass: 'action-header',
 		startExpanded: shouldExpandAction,
 		isHeading: false,
-		icon: actionIcon,
-		onDelete: async () => {
+		icons: [actionIcon],
+		// Show move buttons only when NOT in delete mode
+		onMoveUp: !isDeleteMode && index > 0 ? async () => {
+			const temp = workflow.actions[index - 1];
+			if (temp) {
+				workflow.actions[index - 1] = action;
+				workflow.actions[index] = temp;
+			}
+			await plugin.saveSettings();
+			if (isExpanded() && isActionExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
+			} else if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
+			}
+			callbacks.refresh();
+		} : undefined,
+		onMoveDown: !isDeleteMode && index < workflow.actions.length - 1 ? async () => {
+			const temp = workflow.actions[index + 1];
+			if (temp) {
+				workflow.actions[index + 1] = action;
+				workflow.actions[index] = temp;
+			}
+			await plugin.saveSettings();
+			if (isExpanded() && isActionExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id, actionId: action.id });
+			} else if (isExpanded()) {
+				callbacks.setExpandState({ workflowId: workflow.id });
+			}
+			callbacks.refresh();
+		} : undefined,
+		// Show delete button only when in delete mode
+		onDelete: isDeleteMode ? async () => {
 			workflow.actions.splice(index, 1);
 			await plugin.saveSettings();
 			if (isExpanded()) {
 				callbacks.setExpandState({ workflowId: workflow.id });
 			}
 			callbacks.refresh();
-		},
+		} : undefined,
 	});
 
 	// Helper to preserve action expand state on refresh

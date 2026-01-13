@@ -185,6 +185,8 @@ export interface WorkflowConfig {
 	outputType: WorkflowOutputType;
 	/** Folder for output (when outputType is 'new-note') */
 	outputFolder: string;
+	/** Whether to show this workflow as a command in the command palette */
+	showInCommandPalette: boolean;
 }
 
 /**
@@ -194,7 +196,8 @@ export const DEFAULT_WORKFLOW_CONFIG: Omit<WorkflowConfig, 'id'> = {
 	name: 'New workflow',
 	actions: [],
 	outputType: 'popup',
-	outputFolder: ''
+	outputFolder: '',
+	showInCommandPalette: false
 };
 
 export interface AIToolboxSettings {

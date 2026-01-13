@@ -159,17 +159,33 @@ If your plugin does not need CSS, delete this file.
 	height: 16px;
 }
 
+/* Workflow separator */
+.workflows-separator {
+	margin: 0px 0 12px 0;
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Separator between workflow name and actions section */
+.workflow-actions-separator {
+	margin: 8px 0;
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
 /* Workflow container styles */
 .workflow-container {
-	margin-bottom: 16px;
+	margin-bottom: 8px;
 	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	padding: 8px;
+	border-radius: 6px;
+	padding: 6px;
 }
+
 
 .workflow-header {
 	cursor: pointer;
 	user-select: none;
+	padding: 2px 4px;
 }
 
 .workflow-header:hover .setting-item-name {
@@ -182,24 +198,42 @@ If your plugin does not need CSS, delete this file.
 
 .workflow-content.is-expanded {
 	display: block;
-	padding-top: 8px;
+	padding-top: 6px;
 }
 
-/* Action container styles */
-.action-container {
-	margin-left: 20px;
+/* Actions section container - integrates with workflow container */
+.actions-section {
+	margin-top: 12px;
+	margin-bottom: 12px;
+}
+
+.actions-section-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--text-muted);
 	margin-bottom: 8px;
+}
+
+/* Actions list wrapper - transparent container with vertical spacing */
+.actions-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+/* Action container styles - individual card-like sections */
+.action-container {
+	background: var(--background-secondary);
+	border-radius: 6px;
+	border: 1px solid var(--background-modifier-border);
+	padding: 8px;
 }
 
 .action-header {
 	cursor: pointer;
-	background: var(--background-secondary);
+	background: transparent;
 	border-radius: 4px;
 	padding: 4px 8px;
-}
-
-.action-header:hover .setting-item-name {
-	color: var(--text-accent);
 }
 
 .action-content.is-collapsed {
@@ -210,6 +244,38 @@ If your plugin does not need CSS, delete this file.
 	display: block;
 	padding-top: 8px;
 	padding-left: 12px;
+	padding-right: 8px;
+}
+
+/* Delete mode toggle styles */
+.delete-mode-toggle-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.delete-mode-toggle-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.delete-mode-toggle-icon svg {
+	width: 16px;
+	height: 16px;
+	color: var(--text-muted);
+}
+
+/* Red delete button when in delete mode */
+.action-header button[aria-label="Delete"],
+.workflow-header button[aria-label="Delete"] {
+	color: var(--color-red);
+}
+
+.action-header button[aria-label="Delete"]:hover,
+.workflow-header button[aria-label="Delete"]:hover {
+	background: var(--color-red);
+	color: var(--text-on-accent);
 }
 
 .workflow-textarea {

@@ -18,14 +18,18 @@ export interface CollapsibleSectionConfig {
 	startExpanded: boolean;
 	/** Whether to show as a heading (bold) - defaults to true */
 	isHeading?: boolean;
-	/** Optional icon to display before the title */
-	icon?: string;
+	/** Optional icon(s) to display after the title - can be a single icon or array of icons */
+	icons?: string[];
 	/** Optional secondary text to display in the header (e.g., ID) */
 	secondaryText?: string;
 	/** Callback when the delete button is clicked (if provided, delete button is shown) */
 	onDelete?: () => void | Promise<void>;
 	/** Callback when the title changes (for dynamic name updates) */
 	onTitleChange?: (newTitle: string) => void;
+	/** Callback when the move up button is clicked (if provided, move up button is shown) */
+	onMoveUp?: () => void | Promise<void>;
+	/** Callback when the move down button is clicked (if provided, move down button is shown) */
+	onMoveDown?: () => void | Promise<void>;
 }
 
 /**
@@ -57,9 +61,11 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		headerClass,
 		startExpanded,
 		isHeading = true,
-		icon,
+		icons,
 		secondaryText,
 		onDelete,
+		onMoveUp,
+		onMoveDown,
 	} = config;
 
 	const container = containerEl.createDiv(containerClass);
@@ -71,11 +77,11 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 
 	// Track current title for updates
 	let currentTitle = title;
-	let iconElement: HTMLElement | null = null;
+	let iconElements: HTMLElement[] = [];
 
 	// Helper to get the formatted title with arrow and optional icon
 	const getFormattedTitle = (name: string, expanded: boolean): string => {
-		// Arrow only, icon will be inserted separately
+		// Arrow only, icons will be inserted separately
 		return `${expanded ? '▾' : '▸'} ${name || 'Unnamed'}`;
 	};
 
@@ -87,17 +93,36 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		headerSetting.setHeading();
 	}
 
-	// Add icon if provided (at the end, after title text)
-	if (icon) {
-		iconElement = headerSetting.nameEl.createSpan({ cls: 'workflow-header-icon' });
-		setIcon(iconElement, icon);
-		headerSetting.nameEl.appendChild(iconElement);
+	// Add icons if provided (at the end, after title text)
+	if (icons && icons.length > 0) {
+		for (const iconName of icons) {
+			const iconElement = headerSetting.nameEl.createSpan({ cls: 'workflow-header-icon' });
+			setIcon(iconElement, iconName);
+			headerSetting.nameEl.appendChild(iconElement);
+			iconElements.push(iconElement);
+		}
 	}
 
 	// Add secondary text if provided (displayed before delete button)
 	if (secondaryText) {
 		const secondaryEl = headerSetting.controlEl.createSpan({ cls: 'collapsible-section-secondary-text' });
 		secondaryEl.textContent = secondaryText;
+	}
+
+	// Add move up button if callback provided
+	if (onMoveUp) {
+		headerSetting.addButton(button => button
+			.setIcon('chevron-up')
+			.setTooltip('Move up')
+			.onClick(() => { void onMoveUp(); }));
+	}
+
+	// Add move down button if callback provided
+	if (onMoveDown) {
+		headerSetting.addButton(button => button
+			.setIcon('chevron-down')
+			.setTooltip('Move down')
+			.onClick(() => { void onMoveDown(); }));
 	}
 
 	// Add delete button if callback provided
@@ -117,8 +142,8 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		contentContainer.classList.toggle('is-expanded', isCollapsed);
 		headerSetting.setName(getFormattedTitle(currentTitle, isCollapsed));
 
-		// Re-add icon at the end
-		if (icon && iconElement) {
+		// Re-add icons at the end
+		for (const iconElement of iconElements) {
 			headerSetting.nameEl.appendChild(iconElement);
 		}
 	};
@@ -139,8 +164,8 @@ export function createCollapsibleSection(config: CollapsibleSectionConfig): Coll
 		const isExpanded = contentContainer.classList.contains('is-expanded');
 		headerSetting.setName(getFormattedTitle(newTitle, isExpanded));
 
-		// Re-add icon at the end
-		if (icon && iconElement) {
+		// Re-add icons at the end
+		for (const iconElement of iconElements) {
 			headerSetting.nameEl.appendChild(iconElement);
 		}
 	};

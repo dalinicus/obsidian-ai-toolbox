@@ -1,11 +1,16 @@
 import { Plugin } from 'obsidian';
-import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab } from "./settings/index";
+import { DEFAULT_SETTINGS, AIToolboxSettings, AIToolboxSettingTab, WorkflowConfig } from "./settings/index";
 import { WorkflowSuggesterModal } from "./components/workflow-suggester";
 import { executeWorkflow } from "./processing/workflow-executor";
 import { VIEW_TYPE_LOG, LogPaneView, logInfo, logNotice, LogCategory } from "./logging";
 
+// Command ID prefix for workflow commands
+const WORKFLOW_COMMAND_PREFIX = 'execute-workflow-';
+
 export default class AIToolboxPlugin extends Plugin {
 	settings: AIToolboxSettings;
+	// Track registered workflow command IDs for cleanup
+	private registeredWorkflowCommandIds: Set<string> = new Set();
 
 	async onload() {
 		await this.loadSettings();
@@ -34,6 +39,9 @@ export default class AIToolboxPlugin extends Plugin {
 			}
 		});
 
+		// Register individual workflow commands
+		this.registerWorkflowCommands();
+
 		// This adds a settings tab so the user can configure various aspects of the plugin
 		this.addSettingTab(new AIToolboxSettingTab(this.app, this));
 
@@ -42,6 +50,7 @@ export default class AIToolboxPlugin extends Plugin {
 
 	onunload() {
 		// Log views are cleaned up automatically by Obsidian when the plugin unloads
+		// Workflow commands are also cleaned up automatically when the plugin unloads
 	}
 
 	/**
@@ -87,5 +96,67 @@ export default class AIToolboxPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+		// Re-register workflow commands to pick up any changes
+		this.registerWorkflowCommands();
+	}
+
+	/**
+	 * Get the command ID for a workflow.
+	 */
+	private getWorkflowCommandId(workflow: WorkflowConfig): string {
+		return `${WORKFLOW_COMMAND_PREFIX}${workflow.id}`;
+	}
+
+	/**
+	 * Register individual workflow commands for workflows with showInCommandPalette enabled.
+	 * This method handles both initial registration and updates when settings change.
+	 */
+	private registerWorkflowCommands(): void {
+		// Build the set of command IDs that should be registered
+		const shouldBeRegistered = new Set<string>();
+		for (const workflow of this.settings.workflows) {
+			if (workflow.showInCommandPalette) {
+				shouldBeRegistered.add(this.getWorkflowCommandId(workflow));
+			}
+		}
+
+		// Remove commands that should no longer be registered
+		for (const commandId of this.registeredWorkflowCommandIds) {
+			if (!shouldBeRegistered.has(commandId)) {
+				this.unregisterWorkflowCommand(commandId);
+				this.registeredWorkflowCommandIds.delete(commandId);
+			}
+		}
+
+		// Register new commands
+		for (const workflow of this.settings.workflows) {
+			if (!workflow.showInCommandPalette) {
+				continue;
+			}
+
+			const commandId = this.getWorkflowCommandId(workflow);
+			if (!this.registeredWorkflowCommandIds.has(commandId)) {
+				this.addCommand({
+					id: commandId,
+					name: `Run workflow: ${workflow.name}`,
+					callback: () => {
+						void executeWorkflow(this.app, this.settings, workflow);
+					}
+				});
+				this.registeredWorkflowCommandIds.add(commandId);
+			}
+		}
+	}
+
+	/**
+	 * Unregister a workflow command by its ID.
+	 */
+	private unregisterWorkflowCommand(commandId: string): void {
+		// Access the internal commands API to remove commands
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const commands = (this.app as any).commands;
+		if (commands && typeof commands.removeCommand === 'function') {
+			commands.removeCommand(`${this.manifest.id}:${commandId}`);
+		}
 	}
 }
