@@ -1,5 +1,5 @@
 // Input handlers
-export type { InputHandler, InputContext, InputResult } from './input';
+export type { InputHandler, InputContext, InputResult, VaultFileInputOptions } from './input';
 export {
     VaultFileInputHandler,
     ClipboardUrlInputHandler,

@@ -71,6 +71,11 @@ export type TranscriptionMediaType = 'video-url' | 'audio-file';
 export type TimestampGranularity = 'disabled' | 'segment' | 'word';
 
 /**
+ * Extraction mode for video/audio - full or custom time range
+ */
+export type ExtractionMode = 'full' | 'custom';
+
+/**
  * Context configuration for transcription workflows
  */
 export interface TranscriptionContextConfig {
@@ -81,6 +86,12 @@ export interface TranscriptionContextConfig {
 	impersonateBrowser?: string;
 	/** Whether to use browser cookies for authentication (video-url only) */
 	useBrowserCookies?: boolean;
+	/** Extraction mode - 'full' for entire video/audio, 'custom' for time range */
+	extractionMode?: ExtractionMode;
+	/** Start time for custom extraction (format: "MM:SS" or "HH:MM:SS") */
+	startTime?: string;
+	/** End time for custom extraction (format: "MM:SS" or "HH:MM:SS") */
+	endTime?: string;
 }
 
 /**
@@ -185,7 +196,10 @@ export const DEFAULT_TRANSCRIPTION_ACTION: Omit<TranscriptionAction, 'id'> = {
 		mediaType: 'video-url',
 		sourceUrlToken: 'workflow.clipboard',
 		impersonateBrowser: 'chrome',
-		useBrowserCookies: false
+		useBrowserCookies: false,
+		extractionMode: 'full',
+		startTime: '',
+		endTime: ''
 	},
 	language: '',
 	timestampGranularity: 'disabled'

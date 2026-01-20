@@ -27,6 +27,7 @@ export type {
 	TranscriptionMediaType,
 	TranscriptionContextConfig,
 	TimestampGranularity,
+	ExtractionMode,
 	ChatContextType,
 	ChatContextConfig,
 	ActionType,

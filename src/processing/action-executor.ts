@@ -4,7 +4,9 @@ import { createActionProvider, ChatMessage, TranscriptionOptions } from '../prov
 import {
     InputContext,
     InputResult,
-    TokenUrlInputHandler
+    InputHandler,
+    TokenUrlInputHandler,
+    VaultFileInputHandler
 } from '../handlers';
 import {
     createChatWorkflowTokens,
@@ -249,21 +251,37 @@ export async function executeTranscriptionAction(
         return { ...baseResult, error: 'Provider does not support transcription' };
     }
 
-    // Resolve the source URL from the configured token
-    const sourceUrlToken = action.transcriptionContext?.sourceUrlToken ?? 'workflow.clipboard';
-    const sourceUrl = resolveTokenValue(sourceUrlToken, context);
+    // Create the appropriate input handler based on media type
+    const mediaType = action.transcriptionContext?.mediaType ?? 'video-url';
+    let inputHandler: InputHandler;
 
-    if (!sourceUrl || !sourceUrl.trim()) {
-        return { ...baseResult, error: `No URL found in token {{${sourceUrlToken}}}` };
+    if (mediaType === 'audio-file') {
+        // Use VaultFileInputHandler for audio files from the vault
+        inputHandler = new VaultFileInputHandler({
+            extractionMode: action.transcriptionContext?.extractionMode,
+            startTime: action.transcriptionContext?.startTime,
+            endTime: action.transcriptionContext?.endTime
+        });
+    } else {
+        // Use TokenUrlInputHandler for video URLs
+        const sourceUrlToken = action.transcriptionContext?.sourceUrlToken ?? 'workflow.clipboard';
+        const sourceUrl = resolveTokenValue(sourceUrlToken, context);
+
+        if (!sourceUrl || !sourceUrl.trim()) {
+            return { ...baseResult, error: `No URL found in token {{${sourceUrlToken}}}` };
+        }
+
+        // Get per-action browser/cookie settings and time range
+        const extractionSettings = {
+            impersonateBrowser: action.transcriptionContext?.impersonateBrowser ?? 'chrome',
+            useBrowserCookies: action.transcriptionContext?.useBrowserCookies ?? false,
+            extractionMode: action.transcriptionContext?.extractionMode,
+            startTime: action.transcriptionContext?.startTime,
+            endTime: action.transcriptionContext?.endTime
+        };
+
+        inputHandler = new TokenUrlInputHandler(sourceUrl, extractionSettings);
     }
-
-    // Get per-action browser/cookie settings (required, with defaults)
-    const extractionSettings = {
-        impersonateBrowser: action.transcriptionContext?.impersonateBrowser ?? 'chrome',
-        useBrowserCookies: action.transcriptionContext?.useBrowserCookies ?? false
-    };
-
-    const inputHandler = new TokenUrlInputHandler(sourceUrl, extractionSettings);
 
     // Create a minimal workflow-like object for InputContext compatibility
     const inputContext: InputContext = {
@@ -284,7 +302,10 @@ export async function executeTranscriptionAction(
 
         const inputResult = await inputHandler.getInput(inputContext);
         if (!inputResult) {
-            return { ...baseResult, error: 'Failed to extract audio from URL' };
+            const errorMsg = mediaType === 'audio-file'
+                ? 'Failed to get audio file'
+                : 'Failed to extract audio from URL';
+            return { ...baseResult, error: errorMsg };
         }
 
         logNotice(LogCategory.TRANSCRIPTION, `Transcribing audio...`);

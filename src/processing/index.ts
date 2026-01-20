@@ -6,6 +6,7 @@ export {
     extractFileName,
     prepareAudioFormData,
     createTestAudioBuffer,
+    trimAudioFile,
 } from './audio-processor';
 
 export type {
@@ -19,6 +20,8 @@ export type {
     PrepareAudioFormDataOptions,
     PreparedAudioFormData,
     TestAudioData,
+    TrimAudioOptions,
+    TrimAudioResult,
 } from './audio-processor';
 
 // Video processor - yt-dlp related functionality

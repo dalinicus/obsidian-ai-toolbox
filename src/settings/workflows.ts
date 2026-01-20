@@ -11,6 +11,7 @@ import {
 	PromptSourceType,
 	TranscriptionMediaType,
 	TimestampGranularity,
+	ExtractionMode,
 	ExpandOnNextRenderState,
 	generateId,
 	DEFAULT_WORKFLOW_CONFIG,
@@ -18,6 +19,7 @@ import {
 	DEFAULT_TRANSCRIPTION_ACTION,
 	DEFAULT_HTTP_REQUEST_ACTION
 } from "./types";
+import { validateTimeFormat, validateTimeRange } from "../utils/time-utils";
 import { createCollapsibleSection } from "../components/collapsible-section";
 import { createPathPicker } from "../components/path-picker";
 import { globalDeleteModeManager, nestedDeleteModeManager } from "../components/delete-mode-manager";
@@ -692,6 +694,101 @@ function displayTranscriptionActionSettings(
 					action.transcriptionContext.useBrowserCookies = value;
 					await plugin.saveSettings();
 				}));
+	}
+
+	// Extraction mode dropdown
+	const extractionModeOptions: Record<ExtractionMode, string> = {
+		'full': 'Full duration',
+		'custom': 'Custom time range'
+	};
+	const currentExtractionMode = action.transcriptionContext?.extractionMode ?? 'full';
+	new Setting(containerEl)
+		.setName('Extraction mode')
+		.setDesc('Extract full media or a specific time range')
+		.addDropdown(dropdown => dropdown
+			.addOptions(extractionModeOptions)
+			.setValue(currentExtractionMode)
+			.onChange(async (value) => {
+				if (!action.transcriptionContext) {
+					action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+				}
+				action.transcriptionContext.extractionMode = value as ExtractionMode;
+				await plugin.saveSettings();
+				preserveActionExpandState();
+				callbacks.refresh();
+			}));
+
+	// Show time range inputs only when custom mode is selected
+	if (currentExtractionMode === 'custom') {
+		// Start time input
+		const startTimeSetting = new Setting(containerEl)
+			.setName('Start time')
+			.setDesc('Start time for extraction (leave empty for beginning)')
+			.addText(text => {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				text.setPlaceholder('mm:ss')
+					.setValue(action.transcriptionContext?.startTime ?? '')
+					.onChange(async (value) => {
+						if (!action.transcriptionContext) {
+							action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+						}
+						action.transcriptionContext.startTime = value;
+						await plugin.saveSettings();
+
+						// Validate and show error styling
+						const validation = validateTimeFormat(value);
+						text.inputEl.toggleClass('settings-input-error', !validation.isValid);
+					});
+
+				// Initial validation styling
+				const initialValidation = validateTimeFormat(action.transcriptionContext?.startTime ?? '');
+				text.inputEl.toggleClass('settings-input-error', !initialValidation.isValid);
+			});
+		startTimeSetting.settingEl.addClass('settings-indent');
+
+		// End time input
+		const endTimeSetting = new Setting(containerEl)
+			.setName('End time')
+			.setDesc('End time for extraction (leave empty for end of media)')
+			.addText(text => {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case
+				text.setPlaceholder('mm:ss')
+					.setValue(action.transcriptionContext?.endTime ?? '')
+					.onChange(async (value) => {
+						if (!action.transcriptionContext) {
+							action.transcriptionContext = { mediaType: 'video-url', sourceUrlToken: 'workflow.clipboard' };
+						}
+						action.transcriptionContext.endTime = value;
+						await plugin.saveSettings();
+
+						// Validate time format
+						const formatValidation = validateTimeFormat(value);
+						let hasError = !formatValidation.isValid;
+
+						// Also validate range if both times are provided
+						if (formatValidation.isValid && action.transcriptionContext?.startTime) {
+							const rangeValidation = validateTimeRange(
+								action.transcriptionContext.startTime,
+								value
+							);
+							hasError = !rangeValidation.isValid;
+						}
+
+						text.inputEl.toggleClass('settings-input-error', hasError);
+					});
+
+				// Initial validation styling
+				const startTime = action.transcriptionContext?.startTime ?? '';
+				const endTime = action.transcriptionContext?.endTime ?? '';
+				const formatValidation = validateTimeFormat(endTime);
+				let hasError = !formatValidation.isValid;
+				if (formatValidation.isValid && startTime) {
+					const rangeValidation = validateTimeRange(startTime, endTime);
+					hasError = !rangeValidation.isValid;
+				}
+				text.inputEl.toggleClass('settings-input-error', hasError);
+			});
+		endTimeSetting.settingEl.addClass('settings-indent');
 	}
 
 	// Language setting (advanced)

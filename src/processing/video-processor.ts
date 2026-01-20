@@ -3,9 +3,10 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { Buffer } from 'buffer';
-import { AIToolboxSettings } from '../settings';
+import { AIToolboxSettings, ExtractionMode } from '../settings';
 import { videoPlatformRegistry, VideoMetadata } from './video-platforms';
 import { logNotice, LogCategory } from '../logging';
+import { formatYtDlpSection, validateTimeRange } from '../utils/time-utils';
 
 /**
  * Configuration for video processing operations.
@@ -17,6 +18,12 @@ export interface VideoProcessorConfig {
     useBrowserCookies: boolean;
     keepVideo: boolean;
     outputDirectory?: string;
+    /** Extraction mode - 'full' or 'custom' time range */
+    extractionMode?: ExtractionMode;
+    /** Start time for custom extraction (MM:SS or HH:MM:SS) */
+    startTime?: string;
+    /** End time for custom extraction (MM:SS or HH:MM:SS) */
+    endTime?: string;
 }
 
 /**
@@ -99,6 +106,7 @@ function spawnYtDlp(
             '--audio-format', 'mp3', // Convert to mp3
             '--audio-quality', '0',  // Best quality
             '--write-info-json',     // Write metadata to .info.json file
+            '--js-runtimes', 'node', // Use Node.js for JavaScript challenges
         ];
 
         if (config.keepVideo) {
@@ -111,6 +119,25 @@ function spawnYtDlp(
 
         if (config.useBrowserCookies) {
             args.push('--cookies-from-browser', config.impersonateBrowser);
+        }
+
+        // Add time range extraction if custom mode with valid times
+        if (config.extractionMode === 'custom') {
+            const startTime = config.startTime || '';
+            const endTime = config.endTime || '';
+
+            // Only add if at least one time is specified
+            if (startTime || endTime) {
+                const validation = validateTimeRange(startTime, endTime);
+                if (validation.isValid) {
+                    const section = formatYtDlpSection(startTime, endTime);
+                    if (section) {
+                        args.push('--download-sections', section);
+                        // Force keyframes to ensure accurate cuts
+                        args.push('--force-keyframes-at-cuts');
+                    }
+                }
+            }
         }
 
         args.push(
@@ -209,6 +236,12 @@ export interface ExtractAudioResult {
 export interface VideoExtractionSettings {
     impersonateBrowser: string;
     useBrowserCookies: boolean;
+    /** Extraction mode - 'full' or 'custom' time range */
+    extractionMode?: ExtractionMode;
+    /** Start time for custom extraction (MM:SS or HH:MM:SS) */
+    startTime?: string;
+    /** End time for custom extraction (MM:SS or HH:MM:SS) */
+    endTime?: string;
 }
 
 /**
@@ -222,6 +255,9 @@ function settingsToProcessorConfig(settings: AIToolboxSettings, extractionSettin
         useBrowserCookies: extractionSettings.useBrowserCookies,
         keepVideo: settings.keepVideo,
         outputDirectory: settings.outputDirectory,
+        extractionMode: extractionSettings.extractionMode,
+        startTime: extractionSettings.startTime,
+        endTime: extractionSettings.endTime,
     };
 }
 

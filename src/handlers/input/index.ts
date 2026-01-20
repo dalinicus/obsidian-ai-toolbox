@@ -1,5 +1,6 @@
 // Input handler types
 export type { InputHandler, InputContext, InputResult } from './types';
+export type { VaultFileInputOptions } from './vault-file-input-handler';
 
 // Input handler implementations
 export { VaultFileInputHandler } from './vault-file-input-handler';

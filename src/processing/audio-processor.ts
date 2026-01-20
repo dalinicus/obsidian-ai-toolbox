@@ -1,6 +1,10 @@
+import { spawn } from 'child_process';
 import { Buffer } from 'buffer';
 import * as fs from 'fs';
-import { TimestampGranularity } from '../settings';
+import * as path from 'path';
+import * as os from 'os';
+import { TimestampGranularity, ExtractionMode } from '../settings';
+import { formatFfmpegTimeArgs, validateTimeRange } from '../utils/time-utils';
 
 /**
  * Word-level timestamp data from transcription API
@@ -286,4 +290,120 @@ export function createTestAudioBuffer(): TestAudioData {
     }
 
     return { audioBuffer, fileName: 'test-audio.wav' };
+}
+
+/**
+ * Options for trimming audio files
+ */
+export interface TrimAudioOptions {
+    /** Path to the input audio file */
+    inputPath: string;
+    /** Extraction mode - 'full' or 'custom' */
+    extractionMode?: ExtractionMode;
+    /** Start time (MM:SS or HH:MM:SS) */
+    startTime?: string;
+    /** End time (MM:SS or HH:MM:SS) */
+    endTime?: string;
+    /** Path to ffmpeg binary directory (optional) */
+    ffmpegLocation?: string;
+}
+
+/**
+ * Result from trimming audio
+ */
+export interface TrimAudioResult {
+    /** Path to the trimmed audio file (or original if no trimming needed) */
+    audioFilePath: string;
+    /** Whether the audio was actually trimmed */
+    wasTrimmed: boolean;
+}
+
+/**
+ * Trims an audio file to a specific time range using ffmpeg.
+ * If no trimming is needed (full mode or no times specified), returns the original path.
+ *
+ * @param options - Trimming options
+ * @returns Result with the audio file path (trimmed or original)
+ * @throws Error if ffmpeg fails or times are invalid
+ */
+export async function trimAudioFile(options: TrimAudioOptions): Promise<TrimAudioResult> {
+    const { inputPath, extractionMode, startTime, endTime, ffmpegLocation } = options;
+
+    // If not custom mode or no times specified, return original
+    if (extractionMode !== 'custom' || (!startTime?.trim() && !endTime?.trim())) {
+        return { audioFilePath: inputPath, wasTrimmed: false };
+    }
+
+    // Validate time range
+    const validation = validateTimeRange(startTime || '', endTime || '');
+    if (!validation.isValid) {
+        throw new Error(`Invalid time range: ${validation.errorMessage}`);
+    }
+
+    // Get ffmpeg time arguments
+    const timeArgs = formatFfmpegTimeArgs(startTime || '', endTime || '');
+    if (!timeArgs) {
+        return { audioFilePath: inputPath, wasTrimmed: false };
+    }
+
+    // If no time arguments, return original
+    if (!timeArgs.ssArg && !timeArgs.toArg) {
+        return { audioFilePath: inputPath, wasTrimmed: false };
+    }
+
+    // Create output file path in temp directory
+    const inputExt = path.extname(inputPath);
+    const inputBase = path.basename(inputPath, inputExt);
+    const outputPath = path.join(os.tmpdir(), `${inputBase}_trimmed_${Date.now()}${inputExt}`);
+
+    return new Promise((resolve, reject) => {
+        const args: string[] = [];
+
+        // Add start time (before input for faster seeking)
+        if (timeArgs.ssArg) {
+            args.push('-ss', timeArgs.ssArg);
+        }
+
+        // Input file
+        args.push('-i', inputPath);
+
+        // Add end time (after input)
+        if (timeArgs.toArg) {
+            args.push('-to', timeArgs.toArg);
+        }
+
+        // Copy codec for faster processing (no re-encoding)
+        args.push('-c', 'copy');
+
+        // Overwrite output if exists
+        args.push('-y');
+
+        // Output file
+        args.push(outputPath);
+
+        let ffmpegCommand = 'ffmpeg';
+        if (ffmpegLocation) {
+            ffmpegCommand = path.join(ffmpegLocation, 'ffmpeg');
+        }
+
+        const proc = spawn(ffmpegCommand, args, { shell: false });
+
+        let stderr = '';
+
+        proc.stderr.on('data', (data: Buffer) => {
+            stderr += data.toString();
+        });
+
+        proc.on('close', (code) => {
+            if (code === 0 && fs.existsSync(outputPath)) {
+                resolve({ audioFilePath: outputPath, wasTrimmed: true });
+            } else {
+                reject(new Error(`ffmpeg exited with code ${code}: ${stderr}`));
+            }
+        });
+
+        proc.on('error', (err) => {
+            reject(new Error(`Failed to start ffmpeg: ${err.message}. Is ffmpeg installed?`));
+        });
+    });
 }
